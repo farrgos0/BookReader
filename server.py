@@ -54,7 +54,7 @@ CATALOG_DIR = os.path.join(ROOT, "catalog")   # книги, которые кл�
 # смена адреса «потеряла» бы книги пользователя.
 LOOPBACK = "127.0.0.1"
 
-VERSION = "1.1.0"
+VERSION = "1.0.0"
 SAMPLE_RATE = 48000
 DEFAULT_SPEAKER = "aidar"
 MAX_CHUNK = 800          # Silero не любит слишком длинные куски
@@ -774,7 +774,9 @@ class Catalog:
         None — обычный архив с одной книгой (отдаётся как есть); False — не получилось."""
         import json
         import assemble
-        key = h.hexdigest()[:20]
+        import hashlib
+        # версия сборщика в ключе: исправленный сборщик пересобирает книги, а не отдаёт старые
+        key = hashlib.sha1(f"{h.hexdigest()}:{assemble.BUILD}".encode()).hexdigest()[:20]
         out_dir = os.path.join(paths.data_dir(), "catalog-built")
         meta_path = os.path.join(out_dir, key + ".json")
         if os.path.exists(meta_path):

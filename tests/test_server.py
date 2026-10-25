@@ -38,7 +38,26 @@ def free_port():
     return p
 
 
-class Numbers(unittest.TestCase):
+class BrokenFb2(unittest.TestCase):
+    """Битый FB2 из конвертеров: абзацы вокруг строк таблицы, незакрытые теги — глава не теряется."""
+
+    def test_table_in_p(self):
+        import assemble
+        x = ('<?xml version="1.0"?><FictionBook><body><section><title><p>Глава 1. Начало</p></title><p>до</p>'
+             '<table><p><tr><td> ячейка </td></p><p></tr></p></table><p>после</p></section></body></FictionBook>')
+        title, blocks, _, _ = assemble._fb2_part(x.encode())
+        self.assertEqual(title, "Глава 1. Начало")
+        self.assertIn("ячейка", "".join(blocks))
+        self.assertIn("после", "".join(blocks))
+
+    def test_unclosed(self):
+        import assemble
+        x = '<FictionBook><body><section><title><p>Глава 2</p></title><p>a <strong>b</p><p>c</emphasis> d</p></section></body></FictionBook>'
+        title, blocks, _, _ = assemble._fb2_part(x.encode())
+        self.assertEqual(title, "Глава 2")
+        self.assertEqual(len(blocks), 2)
+
+
     """Числа, даты, единицы, сокращения → слова."""
     CASES = {
         "123": "сто двадцать три",

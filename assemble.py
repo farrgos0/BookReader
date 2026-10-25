@@ -23,6 +23,8 @@ import zipfile
 import xml.etree.ElementTree as ET
 from collections import Counter
 
+BUILD = 2   # версия сборки: при изменении сервер пересобирает книги каталога из архивов
+
 PART_EXTS = (".fb2", ".docx", ".odt", ".txt", ".md", ".html", ".htm", ".xhtml", ".epub")
 ARCHIVE_EXTS = (".zip", ".rar", ".7z")
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -168,11 +170,75 @@ def _strip_ns(el):
     return el
 
 
+class _Lenient(__import__("html.parser").parser.HTMLParser):
+    """Терпимый разбор битого FB2 (частая ошибка конвертеров: «<table><p><tr>…</td></p>»):
+    лишние закрывающие теги пропускаются, незакрытые закрываются сами."""
+    VOID = {"image", "empty-line", "br", "img"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.tb, self.stack = ET.TreeBuilder(), []
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.split(":")[-1] if tag.startswith(("l:", "xlink:")) else tag
+        self.tb.start(tag, {k.split(":")[-1]: v or "" for k, v in attrs})
+        if tag in self.VOID:
+            self.tb.end(tag)
+        else:
+            self.stack.append(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        self.tb.start(tag, {k.split(":")[-1]: v or "" for k, v in attrs})
+        self.tb.end(tag)
+
+    def handle_endtag(self, tag):
+        if tag in self.stack:
+            while self.stack:
+                t = self.stack.pop()
+                self.tb.end(t)
+                if t == tag:
+                    break
+
+    def handle_data(self, data):
+        if self.stack:
+            self.tb.data(data)
+
+    def result(self):
+        while self.stack:
+            self.tb.end(self.stack.pop())
+        return self.tb.close()
+
+
+def _parse_lenient(text):
+    try:
+        return ET.fromstring(text)
+    except ET.ParseError:
+        pass
+    # 1) типичная поломка: абзацы вокруг строк и ячеек таблицы
+    fixed = re.sub(r"(?is)<table\b.*?</table>", lambda m: re.sub(r"(?i)</?p\s*>", "", m.group(0)), text)
+    try:
+        return ET.fromstring(fixed)
+    except ET.ParseError:
+        pass
+    # 2) всё остальное — терпимым разбором (теги FB2 в нижнем регистре, как и положено)
+    p = _Lenient()
+    p.feed(re.sub(r"(?i)<(/?)(title|style|script)\b", r"<\1fb-\2", fixed))   # в HTML их содержимое — сырой текст
+    p.close()
+    root = p.result()
+    for e in root.iter():
+        if e.tag.startswith("fb-"):
+            e.tag = e.tag[3:]
+    if root.tag != "fictionbook":
+        raise ValueError("не FB2")
+    root.tag = "FictionBook"
+    return root
+
+
 def _fb2_part(b):
     """FB2: блоки первого тела (без сносок и картинок). Заголовок — у первого раздела, если есть."""
     text = _xml_text_of(b)
     text = re.sub(r"^<\?xml[^>]*\?>", "", text.lstrip("\ufeff").lstrip())
-    root = _strip_ns(ET.fromstring(text))
+    root = _strip_ns(_parse_lenient(text))
     meta = root.find("description/title-info")
     book_title = _norm(meta.findtext("book-title")) if meta is not None else ""
     authors = []

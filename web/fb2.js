@@ -29,8 +29,14 @@
       .replace(/&(?!(?:[a-zA-Z][\w.-]*|#\d+|#x[\da-fA-F]+);)/g, "&amp;");
     doc = P.parseFromString(fixed, "application/xml");
     if (xmlOk(doc)) return doc;
+    // 1б) абзацы вокруг строк и ячеек таблицы («<table><p><tr>…</td></p>») — частая ошибка конвертеров
+    const fixedTables = fixed.replace(/<table\b[\s\S]*?<\/table>/gi, (t) => t.replace(/<\/?p\s*>/gi, ""));
+    if (fixedTables !== fixed) {
+      doc = P.parseFromString(fixedTables, "application/xml");
+      if (xmlOk(doc)) return doc;
+    }
     // 2) незакрытые теги, HTML-сущности (&nbsp;) — разбираем как HTML и переносим в XML-документ
-    let html = fixed.replace(/<\?xml[^>]*>/i, "");
+    let html = fixedTables.replace(/<\?xml[^>]*>/i, "");
     RENAME.forEach((t) => { html = html.replace(new RegExp(`<(/?)${t}\\b`, "gi"), `<$1fb-${t}`); });
     const h = P.parseFromString(html, "text/html");
     const src = h.querySelector("fictionbook");
