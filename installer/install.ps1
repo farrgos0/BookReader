@@ -197,8 +197,11 @@ $ReleaseRepo = "farrgos0/BookReader"
 function Get-NvidiaParts {
     $info = if ($PkgMan -and $PkgMan.torch) { $PkgMan.torch.cu128 } else { $null }
     if (-not $info -or -not $info.parts -or -not $info.file) { return $false }
+    # части лежат в выпуске, где их выложили (torch.cu128.release: «v1.1.0»), — новые выпуски с тем же torch их не повторяют;
+    # в пакетах старых сборок этой строки нет — тогда в выпуске этой же версии
     $ver = $null
-    try { $ver = (Get-Content (Join-Path $Root "bookreader-files.json") -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch {}
+    if ($info.release) { $ver = "$($info.release)".TrimStart("v") }
+    if (-not $ver) { try { $ver = (Get-Content (Join-Path $Root "bookreader-files.json") -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch {} }
     if (-not $ver -and ([IO.File]::ReadAllText((Join-Path $Root "server.py")) -match '(?m)^VERSION = "([^"]+)"')) { $ver = $Matches[1] }
     if (-not $ver) { return $false }
     $dir = Join-Path $Pkg "wheels\cu128"

@@ -11,6 +11,11 @@
 #   build-server.bat -Kind full|update|both — какой архив (без вопроса); -NoPackages — то же, что -Kind update
 #   build-server.bat -RefreshPackages  — скачать пакеты заново (новые torch, numpy и т. д.)
 #
+# Части NVIDIA (~3 ГБ) выкладываются на GitHub только когда меняется torch. Пока torch тот же, новые выпуски
+# состоят из APK, _full и _update, а установщик качает части из того выпуска, где они уже лежат
+# (он записан в packages\manifest.json → torch.cu128.release). Новый torch (-RefreshPackages) — части
+# собираются заново, и их нужно выложить в этот выпуск.
+#
 # Пакеты для установки без интернета (Python, pip, Visual C++, torch для процессора и для видеокарты, numpy, scipy…,
 # модель Silero, словарь) собираются в папку packages\ один раз и потом берутся оттуда. Нужен установленный
 # сервер (install.bat): его Python скачивает пакеты, а модель голосов берётся из его папки torch hub.
@@ -31,7 +36,8 @@ param(
     [switch]$SkipTests,
     [ValidateSet("", "full", "update", "both")] [string]$Kind = "",
     [switch]$NoPackages,
-    [switch]$RefreshPackages
+    [switch]$RefreshPackages,
+    [string]$NvidiaRelease = ""   # выпуск, где уже лежат части NVIDIA этой версии torch (например v1.1.0); обычно не нужен — берётся сам
 )
 $ErrorActionPreference = "Stop"
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
@@ -293,12 +299,30 @@ if (-not $NoPackages) {
         $cmuSrc = @((Join-Path $Root "data\cmudict.dict"), (Join-Path $env:LOCALAPPDATA "BookReader\data\cmudict.dict")) | Where-Object { Test-Path $_ } | Select-Object -First 1
         if ($cmuSrc) { Copy-Item $cmuSrc $cmuDst } else { Fetch "https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict" $cmuDst }
     }
+    # в каком выпуске GitHub лежат части NVIDIA: тот же torch — прежний выпуск, новый torch — этот
+    $nvRel = $null
+    if ($haveParts) {
+        if ($NvidiaRelease) { $nvRel = "v" + $NvidiaRelease.Trim().TrimStart("v") }
+        elseif ($cuInfo.release) { $nvRel = "$($cuInfo.release)" }
+        else {
+            # пакеты собраны прежней версией скрипта: части выкладывались с выпуском, чьи архивы _NVIDIA_ лежат в dist
+            $old = Get-ChildItem $Dist -Filter "BookReader_Server_v*_NVIDIA_1_of_*.zip" -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime | Select-Object -First 1
+            if ($old -and $old.Name -match '_v(\d+\.\d+\.\d+)_NVIDIA_') { $nvRel = "v" + $Matches[1] }
+        }
+    }
+    if (-not $nvRel) { $nvRel = "v$verText" }
+    $cuInfo | Add-Member -NotePropertyName release -NotePropertyValue $nvRel -Force
     $cpuInfo = [pscustomobject]@{ file = $cpuWhl.Name; version = $torchVer; sha256 = (Get-FileHash $cpuWhl.FullName -Algorithm SHA256).Hash.ToLower() }
     [pscustomobject]@{ built = (Get-Date -Format "yyyy-MM-dd"); python = $pyVer; torch = [pscustomobject]@{ version = $torchVer; cpu = $cpuInfo; cu128 = $cuInfo } } |
         ConvertTo-Json -Depth 5 | Out-File -FilePath $manPath -Encoding utf8
     $cuParts = @(Get-ChildItem $cuDir -Filter "torch-*.whl.part*" | Sort-Object { [int]($_.Name -replace '^.*\.part(\d+)$', '$1') })
     $pkgMb = [math]::Round(((Get-ChildItem $Pkg -Recurse -File | Where-Object { $_.FullName -notlike "$cuDir*" } | Measure-Object Length -Sum).Sum) / 1MB)
     Write-Host ("  пакеты готовы: для процессора ~{0} МБ, для видеокарты — {1} части" -f $pkgMb, $cuParts.Count) -ForegroundColor Green
+    if ($nvRel -ne "v$verText") {
+        Write-Host "  torch не менялся: части NVIDIA уже лежат в выпуске $nvRel — заново их не собираю и выкладывать не нужно" -ForegroundColor Green
+        $cuParts = @()
+    }
 }
 
 # ---------- 5. состав архива (белый список) ----------
@@ -413,5 +437,9 @@ Write-Host "Контрольные суммы — рядом, в файлах .s
 if ($wantFull) { Write-Host "Полный — на новом ПК: распаковать в папку с правом записи (не в Program Files) и запустить install.bat." }
 if ($wantUpd) { Write-Host "Обновление — распаковать поверх установленного сервера (с заменой файлов); install.bat запускать не нужно." }
 if ($nvZips.Count) { Write-Host "Для видеокарты NVIDIA: архивы _NVIDIA_ распаковать в ту же папку, что и сервер (поверх), до запуска install.bat." }
+if ($wantFull -and -not $NoPackages) {
+    if ($nvZips.Count) { Write-Host "В выпуск GitHub: APK, _full, _update и части _NVIDIA_ (с файлами .sha256) — torch новый, установщик возьмёт части из этого выпуска." -ForegroundColor Cyan }
+    else { Write-Host "В выпуск GitHub: APK, _full и _update (с файлами .sha256). Части NVIDIA не нужны — установщик возьмёт их из выпуска $nvRel (не удаляйте их оттуда)." -ForegroundColor Cyan }
+}
 if ($Log) { Write-Host "Журнал сборки: $Log"; try { Stop-Transcript | Out-Null } catch {} }
 try { explorer.exe "/select,$zip" } catch {}
