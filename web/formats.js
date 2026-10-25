@@ -1190,8 +1190,14 @@
       if (up >= (nums.length - 1) * 0.6) variants.push({ id: "numbers", label: "Строки из одного номера («1», «IV»)", entries: nums.map((i) => entry(i, 1)) });
     }
 
+    // заголовки, которые в книге уже есть (например, книга собрана из файлов «по 5 глав»: заголовок файла —
+    // первая глава пачки, остальные — простым текстом). Их нельзя терять: найденное добавляется к ним
+    const own = (book.toc || []).filter((t) => items[t.item]);
+    if (own.length && variants.length) {
+      variants.unshift({ id: "toc", label: "Заголовки, которые уже есть в книге", entries: own.map((t) => ({ i: t.item, level: t.level || 1, text: t.title })), checked: true });
+    }
     variants.forEach((v) => { v.count = v.entries.length; });
-    const rec = variants.find((v) => v.count >= 3) || variants[0];
+    const rec = variants.find((v) => v.id !== "toc" && v.count >= 3) || variants.find((v) => v.id !== "toc");
     if (rec) rec.recommended = true;
     return { variants, itemCount: items.length, bodyFs };
   }
@@ -1199,7 +1205,11 @@
   // несколько вариантов вместе: уровни — по порядку (крупный шрифт — разделы, мельче — главы), повторы убираются
   function mergeChapters(variants) {
     const byI = new Map();
-    variants.forEach((v, rank) => v.entries.forEach((e) => {
+    // уровни: шрифтовые варианты — по размеру (самый крупный — разделы, мельче — главы внутри),
+    // остальные (строки «Глава N», готовые заголовки книги) — со своими уровнями, рядом друг с другом
+    const styles = variants.filter((v) => v.fs).sort((a, b) => b.fs - a.fs);
+    variants.forEach((v) => v.entries.forEach((e) => {
+      const rank = v.fs ? styles.indexOf(v) : 0;
       const level = Math.min(3, rank + e.level);
       if (!byI.has(e.i) || byI.get(e.i).level > level) byI.set(e.i, { i: e.i, level, text: e.text });
     }));

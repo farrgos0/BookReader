@@ -2690,7 +2690,7 @@ window.addEventListener("error", (e) => {
     }
     const html = `<p>Выберите, что считать заголовками глав. Ниже — как будет выглядеть оглавление.
       Можно отметить несколько вариантов: крупный шрифт станет разделами, мельче — главами внутри них.</p>
-      <div class="chap-vars">${V.map((v, k) => `<label class="chap-var"><input type="checkbox" data-k="${k}"${v.recommended ? " checked" : ""}>
+      <div class="chap-vars">${V.map((v, k) => `<label class="chap-var"><input type="checkbox" data-k="${k}"${v.recommended || v.checked ? " checked" : ""}>
         <span><b>${esc(v.label)}</b> — ${v.count}<br><small>${esc(v.entries.slice(0, 3).map((e) => e.text).join(" · "))}</small></span></label>`).join("")}</div>
       <div class="chap-prev" id="chapPrev"></div>
       <p class="set-hint">Разметка ищется по тексту и оформлению и может ошибаться — проверьте список. Книга при этом не меняется:
