@@ -1,0 +1,35 @@
+# свой Python и собранное установщиком
+python/
+BookReader.exe
+install.log
+__pycache__/
+*.pyc
+
+# скачивается при первом запуске
+data/cmudict.dict
+data/*.part
+
+# книги каталога — чужие произведения, не публикуем (остаётся только инструкция)
+catalog/*
+!catalog/ПРОЧТИ.txt
+
+# личные ярлыки и временное
+BookReader.url
+*.log
+.write-test
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# архивы сборки (build-server.bat)
+dist/
+
+# пакеты для установки без интернета (build-server.bat собирает их сюда; в архивах релиза они есть)
+packages/
+
+# список файлов выпуска (его пишет build-server.bat, в архивах он есть)
+bookreader-files.json
+
+# дубли pdf.js (читалка грузит *.min.js)
+web/vendor/pdfjs/*.mjs
