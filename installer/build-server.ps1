@@ -212,30 +212,43 @@ if (-not $NoPackages) {
 
     $common = Join-Path $Pkg "wheels\common"; $cpuDir = Join-Path $Pkg "wheels\cpu"; $cuDir = Join-Path $Pkg "wheels\cu128"
     $pipq = @("--disable-pip-version-check", "--progress-bar", "on")
-    # библиотеки и torch для процессора (pip wheel: пакеты без готовых файлов для Windows собираются в .whl)
-    if (-not (Get-ChildItem $cpuDir -Filter "torch-*.whl" -ErrorAction SilentlyContinue)) {
-        Write-Host "  torch (процессор) и библиотеки…"
-        Native { & $py -m pip wheel @pipq -r (Join-Path $Root "requirements.txt") --wheel-dir $common --index-url "https://download.pytorch.org/whl/cpu" --extra-index-url "https://pypi.org/simple" }
-        if ($LASTEXITCODE -ne 0) { Fail "pip не скачал библиотеки (код $LASTEXITCODE)" }
-        Get-ChildItem $common -Filter "torch-*.whl" | Move-Item -Destination $cpuDir -Force
-    } else { Write-Host "  есть: torch (процессор) и библиотеки" }
-    $cpuWhl = Get-ChildItem $cpuDir -Filter "torch-*.whl" | Select-Object -First 1
-    if (-not $cpuWhl) { Fail "torch для процессора не скачался" }
-    $torchVer = ($cpuWhl.Name -split '-')[1] -replace '\+.*$', ''
-    # torch для видеокарты (CUDA 12.8 — новые драйверы, RTX 50xx) той же версии — частями по 1,9 ГБ
+    # Версия torch — одна для процессора и видеокарты: самая новая, что есть в сборках для CUDA 12.8
+    # (на PyPI и в сборках для процессора бывают версии новее — для видеокарты их ещё нет).
+    $verOf = { param($name) ($name -split '-')[1] -replace '\+.*$', '' }
     $cuInfo = $null
     $manPath = Join-Path $Pkg "manifest.json"
     if (Test-Path $manPath) { try { $cuInfo = (Get-Content $manPath -Raw -Encoding UTF8 | ConvertFrom-Json).torch.cu128 } catch {} }
-    $haveParts = $cuInfo -and @(Get-ChildItem $cuDir -Filter "torch-*.whl.part*" -ErrorAction SilentlyContinue).Count -eq [int]$cuInfo.parts -and $cuInfo.version -eq $torchVer
-    if (-not $haveParts) {
+    $haveParts = $cuInfo -and $cuInfo.version -and @(Get-ChildItem $cuDir -Filter "torch-*.whl.part*" -ErrorAction SilentlyContinue).Count -eq [int]$cuInfo.parts
+    $tmpCu = Join-Path $env:TEMP "bookreader-cu128"
+    $cuWhl = $null
+    if ($haveParts) { $torchVer = "$($cuInfo.version)" }
+    else {
         Get-ChildItem $cuDir -File -ErrorAction SilentlyContinue | Remove-Item -Force
-        Write-Host "  torch $torchVer (видеокарта, cu128, ~3 ГБ)…"
-        $tmpCu = Join-Path $env:TEMP "bookreader-cu128"
+        Write-Host "  torch для видеокарты (cu128, ~3 ГБ)…"
         New-Item -ItemType Directory -Force -Path $tmpCu | Out-Null
-        Native { & $py -m pip download @pipq "torch==$torchVer" --no-deps --index-url "https://download.pytorch.org/whl/cu128" -d $tmpCu }
+        Get-ChildItem $tmpCu -Filter "*.part" -ErrorAction SilentlyContinue | Remove-Item -Force
+        Native { & $py -m pip download @pipq torch --no-deps --index-url "https://download.pytorch.org/whl/cu128" -d $tmpCu }
         if ($LASTEXITCODE -ne 0) { Fail "pip не скачал torch для видеокарты (код $LASTEXITCODE)" }
-        $cuWhl = Get-ChildItem $tmpCu -Filter "torch-$torchVer*cu128*.whl" | Select-Object -First 1
+        $cuWhl = Get-ChildItem $tmpCu -Filter "torch-*cu128*.whl" | Sort-Object { [version](& $verOf $_.Name) } -Descending | Select-Object -First 1
         if (-not $cuWhl) { Fail "torch для видеокарты не скачался" }
+        $torchVer = & $verOf $cuWhl.Name
+    }
+    Write-Host "  версия torch: $torchVer"
+    # библиотеки и torch той же версии для процессора (pip wheel: пакеты без готовых файлов для Windows собираются в .whl)
+    $cpuWhl = Get-ChildItem $cpuDir -Filter "torch-*.whl" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $cpuWhl -or (& $verOf $cpuWhl.Name) -ne $torchVer) {
+        Get-ChildItem $cpuDir, $common -File -ErrorAction SilentlyContinue | Remove-Item -Force   # другая версия torch — зависимости тоже заново
+        Write-Host "  torch $torchVer (процессор) и библиотеки…"
+        $reqs = @(Get-Content (Join-Path $Root "requirements.txt") | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith("#") } |
+            ForEach-Object { if ($_ -match '^torch\b') { "torch==$torchVer" } else { $_ } })
+        Native { & $py -m pip wheel @pipq @reqs --wheel-dir $common --index-url "https://download.pytorch.org/whl/cpu" --extra-index-url "https://pypi.org/simple" }
+        if ($LASTEXITCODE -ne 0) { Fail "pip не скачал библиотеки (код $LASTEXITCODE)" }
+        Get-ChildItem $common -Filter "torch-*.whl" | Move-Item -Destination $cpuDir -Force
+    } else { Write-Host "  есть: torch $torchVer (процессор) и библиотеки" }
+    $cpuWhl = Get-ChildItem $cpuDir -Filter "torch-*.whl" | Select-Object -First 1
+    if (-not $cpuWhl) { Fail "torch для процессора не скачался" }
+    # torch для видеокарты — частями по 1,9 ГБ (на GitHub файл выпуска — до 2 ГБ)
+    if (-not $haveParts) {
         Write-Host "  делю $($cuWhl.Name) на части…"
         $partSize = 1900MB; $buf = New-Object byte[] (16MB)
         $in = [IO.File]::OpenRead($cuWhl.FullName); $k = 0
