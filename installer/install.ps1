@@ -190,42 +190,109 @@ function Local-Torch([string]$variant, [switch]$Check) {
     Move-Item $tmpw $dest -Force
     return $dest
 }
-# torch для видеокарты частями из выпуска на GitHub (архивы «…_NVIDIA_k_of_N.zip» той же версии):
+# torch для видеокарты частями из выпусков на GitHub (архивы «…_NVIDIA_k_of_N.zip»):
 # человеку достаточно скачать один полный архив — части установщик докачает сам (с докачкой после обрыва).
+# Части выкладываются только с выпуском, где сменился torch, поэтому установщик просматривает все выпуски
+# от новых к старым и берёт части из самого нового, где лежит именно этот torch (файл и число частей из manifest.json).
 # Не получилось (нет интернета, репозиторий закрыт) — $false: тогда torch скачается с сайта PyTorch.
 $ReleaseRepo = "farrgos0/BookReader"
+$NvPartRe = '^BookReader_Server_v[\d.]+_NVIDIA_(?:torch([\w.\-]+)_)?(\d+)_of_(\d+)\.zip$'
+
+# имена файлов внутри zip по ссылке — читаем только конец архива (оглавление zip), не качая его целиком
+function Zip-Names([string]$url) {
+    try {
+        $rq = [Net.HttpWebRequest]::Create($url)
+        $rq.UserAgent = "BookReader-installer"; $rq.Timeout = 30000; $rq.AddRange(-65536)
+        $rs = $rq.GetResponse()
+        try {
+            if ([int]$rs.StatusCode -ne 206) { return $null }   # сервер не умеет читать кусок — не проверить
+            $ms = New-Object IO.MemoryStream; $rs.GetResponseStream().CopyTo($ms); $b = $ms.ToArray()
+        } finally { $rs.Close() }
+        $names = @()
+        for ($j = 0; $j -le $b.Length - 46; $j++) {
+            if ($b[$j] -eq 0x50 -and $b[$j + 1] -eq 0x4b -and $b[$j + 2] -eq 1 -and $b[$j + 3] -eq 2) {
+                $nl = [BitConverter]::ToUInt16($b, $j + 28)
+                if ($j + 46 + $nl -le $b.Length) { $names += [Text.Encoding]::UTF8.GetString($b, $j + 46, $nl); $j += 45 + $nl }
+            }
+        }
+        return $names
+    } catch { return $null }
+}
+
+# выпуски, где лежат части этого torch: @( @{ tag; urls = части 1..N } ), самый новый — первым
+function Find-NvidiaReleases($info, [string]$ownVer) {
+    $found = @()
+    $rels = $null
+    try {
+        $rels = Invoke-RestMethod -Uri "https://api.github.com/repos/$ReleaseRepo/releases?per_page=100" -UseBasicParsing `
+            -Headers @{ "User-Agent" = "BookReader-installer"; "Accept" = "application/vnd.github+json" } -TimeoutSec 30
+    } catch { Warn "список выпусков на GitHub не получен ($($_.Exception.Message)) — пробую известный выпуск" }
+    if ($rels) {
+        foreach ($r in @($rels | Where-Object { -not $_.draft } | Sort-Object { [datetime]$_.published_at } -Descending)) {
+            $parts = @{}; $legacy = $false; $fits = $true
+            foreach ($a in @($r.assets)) {
+                if ($a.name -notmatch $NvPartRe) { continue }
+                $tv = $Matches[1]; $k = [int]$Matches[2]; $n = [int]$Matches[3]
+                if ($n -ne [int]$info.parts) { $fits = $false; break }
+                if ($tv) { if ($tv -ne "$($info.version)") { $fits = $false; break } } else { $legacy = $true }
+                $parts[$k] = $a.browser_download_url
+            }
+            if (-not $fits -or $parts.Count -ne [int]$info.parts) { continue }
+            if ($legacy) {
+                # старые имена без версии torch: заглядываем в оглавление первой части
+                $names = Zip-Names $parts[1]
+                if ($null -eq $names) { if ($r.tag_name -ne "$($info.release)" -and $r.tag_name -ne "v$ownVer") { continue } }
+                elseif (-not ($names | Where-Object { $_ -like "*/wheels/cu128/$($info.file).part1" })) { continue }
+            }
+            $found += @{ tag = $r.tag_name; urls = @(1..[int]$info.parts | ForEach-Object { $parts[$_] }) }
+        }
+    }
+    if (-not $found.Count) {
+        # GitHub API недоступен (лимит запросов, сеть) — выпуск из manifest.json, затем выпуск этой версии
+        foreach ($tag in @("$($info.release)", "v$ownVer") | Where-Object { $_ -and $_ -ne "v" } | Select-Object -Unique) {
+            $v = $tag.TrimStart("v")
+            $found += @{ tag = $tag; urls = @(1..[int]$info.parts | ForEach-Object {
+                "https://github.com/$ReleaseRepo/releases/download/$tag/BookReader_Server_v${v}_NVIDIA_${_}_of_$($info.parts).zip" }) }
+        }
+    }
+    return ,$found
+}
+
 function Get-NvidiaParts {
     $info = if ($PkgMan -and $PkgMan.torch) { $PkgMan.torch.cu128 } else { $null }
     if (-not $info -or -not $info.parts -or -not $info.file) { return $false }
-    # части лежат в выпуске, где их выложили (torch.cu128.release: «v1.1.0»), — новые выпуски с тем же torch их не повторяют;
-    # в пакетах старых сборок этой строки нет — тогда в выпуске этой же версии
-    $ver = $null
-    if ($info.release) { $ver = "$($info.release)".TrimStart("v") }
-    if (-not $ver) { try { $ver = (Get-Content (Join-Path $Root "bookreader-files.json") -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch {} }
-    if (-not $ver -and ([IO.File]::ReadAllText((Join-Path $Root "server.py")) -match '(?m)^VERSION = "([^"]+)"')) { $ver = $Matches[1] }
-    if (-not $ver) { return $false }
+    $ownVer = $null
+    try { $ownVer = (Get-Content (Join-Path $Root "bookreader-files.json") -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch {}
+    if (-not $ownVer -and ([IO.File]::ReadAllText((Join-Path $Root "server.py")) -match '(?m)^VERSION = "([^"]+)"')) { $ownVer = $Matches[1] }
     $dir = Join-Path $Pkg "wheels\cu128"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $n = [int]$info.parts
+    $haveAll = $true
+    for ($k = 1; $k -le $n; $k++) { if (-not (Test-Path (Join-Path $dir "$($info.file).part$k"))) { $haveAll = $false } }
+    if ($haveAll) { return $true }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    for ($k = 1; $k -le $n; $k++) {
-        $partFile = Join-Path $dir "$($info.file).part$k"
-        if (Test-Path $partFile) { continue }
-        $name = "BookReader_Server_v${ver}_NVIDIA_${k}_of_${n}.zip"
-        $zipPath = Join-Path $Cache $name
-        $ok = Download "https://github.com/$ReleaseRepo/releases/download/v$ver/$name" $zipPath "PyTorch для видеокарты с GitHub, часть $k из $n" -Soft
-        if (-not $ok) { return $false }
-        try {
-            $z = [IO.Compression.ZipFile]::OpenRead($zipPath)
+    foreach ($rel in (Find-NvidiaReleases $info $ownVer)) {
+        Info "PyTorch для видеокарты: части из выпуска $($rel.tag)"
+        $ok = $true
+        for ($k = 1; $k -le $n -and $ok; $k++) {
+            $partFile = Join-Path $dir "$($info.file).part$k"
+            if (Test-Path $partFile) { continue }
+            $url = $rel.urls[$k - 1]
+            $zipPath = Join-Path $Cache ([Uri]::UnescapeDataString(($url -split '/')[-1]))
+            if (-not (Download $url $zipPath "PyTorch для видеокарты с GitHub, часть $k из $n" -Soft)) { $ok = $false; break }
             try {
-                $e = $z.Entries | Where-Object { $_.FullName -like "*/wheels/cu128/*.part$k" } | Select-Object -First 1
-                if (-not $e) { throw "в архиве нет части $k" }
-                [IO.Compression.ZipFileExtensions]::ExtractToFile($e, $partFile, $true)
-            } finally { $z.Dispose() }
-            Remove-Item $zipPath -Force
-        } catch { Warn "архив $name повреждён ($($_.Exception.Message))"; Remove-Item $zipPath, $partFile -Force -ErrorAction SilentlyContinue; return $false }
+                $z = [IO.Compression.ZipFile]::OpenRead($zipPath)
+                try {
+                    $e = $z.Entries | Where-Object { $_.FullName -like "*/wheels/cu128/$($info.file).part$k" } | Select-Object -First 1
+                    if (-not $e) { throw "в архиве нет части $k нужной версии torch" }
+                    [IO.Compression.ZipFileExtensions]::ExtractToFile($e, $partFile, $true)
+                } finally { $z.Dispose() }
+                Remove-Item $zipPath -Force
+            } catch { Warn "архив $(Split-Path $zipPath -Leaf): $($_.Exception.Message)"; Remove-Item $zipPath, $partFile -Force -ErrorAction SilentlyContinue; $ok = $false }
+        }
+        if ($ok) { return $true }
     }
-    return $true
+    return $false
 }
 
 # pip из пакетов (без интернета); не вышло (каких-то файлов нет) — обычная установка из интернета
@@ -621,7 +688,7 @@ else {
     $index = if ($cudaIndex) { "https://download.pytorch.org/whl/$cudaIndex" } else { "https://download.pytorch.org/whl/cpu" }
     $what = "torch ($(if ($cudaIndex) { 'видеокарта, ' + $cudaIndex } else { 'процессор' }))"
     # 0) есть в пакетах установщика — ставим оттуда, без интернета
-    # частей NVIDIA рядом нет — сначала пробуем скачать их из выпуска на GitHub (той же версии, что этот архив)
+    # частей NVIDIA рядом нет — сначала пробуем скачать их из выпусков на GitHub (самый новый, где лежит этот torch)
     $ghParts = $false
     if (-not $localTorch -and $cudaIndex -eq "cu128" -and (Get-NvidiaParts)) { $localTorch = Local-Torch $torchVariant -Check; $ghParts = $true }
     if ($localTorch) { $localTorch = Local-Torch $torchVariant }   # части → один файл (в кэше)

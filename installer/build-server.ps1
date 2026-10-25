@@ -11,9 +11,9 @@
 #   build-server.bat -Kind full|update|both — какой архив (без вопроса); -NoPackages — то же, что -Kind update
 #   build-server.bat -RefreshPackages  — скачать пакеты заново (новые torch, numpy и т. д.)
 #
-# Части NVIDIA (~3 ГБ) выкладываются на GitHub только когда меняется torch. Пока torch тот же, новые выпуски
-# состоят из APK, _full и _update, а установщик качает части из того выпуска, где они уже лежат
-# (он записан в packages\manifest.json → torch.cu128.release). Новый torch (-RefreshPackages) — части
+# Части NVIDIA (~3 ГБ, «…_NVIDIA_torchX.Y.Z_k_of_N.zip») выкладываются на GitHub только когда меняется torch.
+# Пока torch тот же, новые выпуски состоят из APK, _full и _update. Установщик просматривает выпуски от новых
+# к старым и берёт части из самого нового, где лежит нужный torch. Новый torch (-RefreshPackages) — части
 # собираются заново, и их нужно выложить в этот выпуск.
 #
 # Пакеты для установки без интернета (Python, pip, Visual C++, torch для процессора и для видеокарты, numpy, scipy…,
@@ -21,7 +21,7 @@
 # сервер (install.bat): его Python скачивает пакеты, а модель голосов берётся из его папки torch hub.
 # Результат:
 #   dist\BookReader_Server_vX.Y.Z_full.zip           — полный: сервер + всё для процессора (~0,6 ГБ)
-#   dist\BookReader_Server_vX.Y.Z_NVIDIA_k_of_N.zip  — к полному: torch для видеокарты частями (на GitHub файл — до 2 ГБ);
+#   dist\BookReader_Server_vX.Y.Z_NVIDIA_torch…_k_of_N.zip — к полному: torch для видеокарты частями (на GitHub файл — до 2 ГБ);
 #                                                      распаковываются в ту же папку, установщик соберёт их сам
 #   dist\BookReader_Server_vX.Y.Z_update.zip         — обновление: только программа, распаковать поверх установленной
 #
@@ -419,7 +419,8 @@ if ($wantUpd) {
 }
 $nvZips = @()
 for ($k = 0; $wantFull -and $k -lt $cuParts.Count; $k++) {
-    $nz = Join-Path $Dist ("BookReader_Server_v{0}_NVIDIA_{1}_of_{2}.zip" -f $verText, ($k + 1), $cuParts.Count)
+    # версия torch в имени — по ней установщик находит на GitHub самый новый выпуск с частями нужного torch
+    $nz = Join-Path $Dist ("BookReader_Server_v{0}_NVIDIA_torch{1}_{2}_of_{3}.zip" -f $verText, $torchVer, ($k + 1), $cuParts.Count)
     Write-Host "  часть для видеокарты $($k + 1) из $($cuParts.Count)…"
     Write-Zip $nz @(& $relOf $cuParts[$k].FullName)
     $nvZips += $nz
@@ -438,8 +439,8 @@ if ($wantFull) { Write-Host "Полный — на новом ПК: распак
 if ($wantUpd) { Write-Host "Обновление — распаковать поверх установленного сервера (с заменой файлов); install.bat запускать не нужно." }
 if ($nvZips.Count) { Write-Host "Для видеокарты NVIDIA: архивы _NVIDIA_ распаковать в ту же папку, что и сервер (поверх), до запуска install.bat." }
 if ($wantFull -and -not $NoPackages) {
-    if ($nvZips.Count) { Write-Host "В выпуск GitHub: APK, _full, _update и части _NVIDIA_ (с файлами .sha256) — torch новый, установщик возьмёт части из этого выпуска." -ForegroundColor Cyan }
-    else { Write-Host "В выпуск GitHub: APK, _full и _update (с файлами .sha256). Части NVIDIA не нужны — установщик возьмёт их из выпуска $nvRel (не удаляйте их оттуда)." -ForegroundColor Cyan }
+    if ($nvZips.Count) { Write-Host "В выпуск GitHub: APK, _full, _update и части _NVIDIA_ (с файлами .sha256) — torch новый; старые выпуски с частями можно не трогать, установщик возьмёт самый новый." -ForegroundColor Cyan }
+    else { Write-Host "В выпуск GitHub: APK, _full и _update (с файлами .sha256). Части NVIDIA не нужны — torch тот же, установщик возьмёт их из выпуска $nvRel (не удаляйте их оттуда)." -ForegroundColor Cyan }
 }
 if ($Log) { Write-Host "Журнал сборки: $Log"; try { Stop-Transcript | Out-Null } catch {} }
 try { explorer.exe "/select,$zip" } catch {}
