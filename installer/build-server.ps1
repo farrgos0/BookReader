@@ -241,10 +241,15 @@ if (-not $NoPackages) {
         Write-Host "  torch $torchVer (процессор) и библиотеки…"
         $reqs = @(Get-Content (Join-Path $Root "requirements.txt") | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith("#") } |
             ForEach-Object { if ($_ -match '^torch\b') { "torch==$torchVer" } else { $_ } })
+        $reqs += "pip"   # колесо pip — чтобы get-pip.py ставил pip без интернета (--no-index)
         Native { & $py -m pip wheel @pipq @reqs --wheel-dir $common --index-url "https://download.pytorch.org/whl/cpu" --extra-index-url "https://pypi.org/simple" }
         if ($LASTEXITCODE -ne 0) { Fail "pip не скачал библиотеки (код $LASTEXITCODE)" }
         Get-ChildItem $common -Filter "torch-*.whl" | Move-Item -Destination $cpuDir -Force
     } else { Write-Host "  есть: torch $torchVer (процессор) и библиотеки" }
+    if (-not (Get-ChildItem $common -Filter "pip-*.whl" -ErrorAction SilentlyContinue)) {
+        Native { & $py -m pip download @pipq pip --no-deps --only-binary=:all: -d $common }
+        if ($LASTEXITCODE -ne 0) { Fail "pip не скачал колесо pip (код $LASTEXITCODE)" }
+    }
     $cpuWhl = Get-ChildItem $cpuDir -Filter "torch-*.whl" | Select-Object -First 1
     if (-not $cpuWhl) { Fail "torch для процессора не скачался" }
     # torch для видеокарты — частями по 1,9 ГБ (на GitHub файл выпуска — до 2 ГБ)

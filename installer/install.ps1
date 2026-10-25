@@ -479,9 +479,16 @@ if (-not $torchOk -and -not $localTorch) {
     $torchMb = if ($cudaIndex) { 2760 } else { 250 }
     $partMb = 0   # уже скачанная часть (прерванная загрузка) — её докачаем
     $pattern = if ($cudaIndex) { "torch-*$cudaIndex*" } else { "torch-*cpu*" }
-    $got = Get-ChildItem $Cache -Filter $pattern -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 1
-    if ($got) { $partMb = [math]::Min($torchMb, $got.Length / 1MB) }
     $fromGh = $cudaIndex -eq "cu128" -and $PkgMan -and $PkgMan.torch -and $PkgMan.torch.cu128
+    if ($fromGh) {
+        # с GitHub качаются части: уже лежащие в packages и недокачанные архивы в кэше — не в счёт
+        $have = @(Get-ChildItem (Join-Path $Pkg "wheels\cu128") -Filter "*.part*" -ErrorAction SilentlyContinue) +
+                @(Get-ChildItem $Cache -Filter "BookReader_Server_v*_NVIDIA_*" -ErrorAction SilentlyContinue)
+        $partMb = [math]::Min($torchMb, (($have | Measure-Object Length -Sum).Sum / 1MB))
+    } else {
+        $got = Get-ChildItem $Cache -Filter $pattern -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 1
+        if ($got) { $partMb = [math]::Min($torchMb, $got.Length / 1MB) }
+    }
     Need ("PyTorch ({0})" -f $(if ($cudaIndex) { "видеокарта" } else { "процессор" }) + $(if ($fromGh) { ", с GitHub" }) + $(if ($partMb -gt 1) { ", докачка" } else { "" })) ($torchMb - $partMb)
 }
 $libMb = @{ numpy = 13; scipy = 41; omegaconf = 1; imageio_ffmpeg = 31 }
