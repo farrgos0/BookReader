@@ -250,15 +250,20 @@ if (-not $NoPackages) {
     # torch для видеокарты — частями по 1,9 ГБ (на GitHub файл выпуска — до 2 ГБ)
     if (-not $haveParts) {
         Write-Host "  делю $($cuWhl.Name) на части…"
-        $partSize = 1900MB; $buf = New-Object byte[] (16MB)
+        # размеры — [long]: в Windows PowerShell 5.1 [math]::Min(int, long) не работает (файл больше 2 ГБ)
+        [long]$partSize = 1900MB; $buf = New-Object byte[] (16MB)
         $in = [IO.File]::OpenRead($cuWhl.FullName); $k = 0
         try {
             while ($in.Position -lt $in.Length) {
                 $k++
                 $out = [IO.File]::Create((Join-Path $cuDir "$($cuWhl.Name).part$k"))
                 try {
-                    $left = [math]::Min($partSize, $in.Length - $in.Position)
-                    while ($left -gt 0) { $n = $in.Read($buf, 0, [math]::Min($buf.Length, $left)); if ($n -le 0) { break }; $out.Write($buf, 0, $n); $left -= $n }
+                    [long]$left = [math]::Min([long]$partSize, [long]($in.Length - $in.Position))
+                    while ($left -gt 0) {
+                        [int]$want = [math]::Min([long]$buf.Length, $left)
+                        $n = $in.Read($buf, 0, $want); if ($n -le 0) { break }
+                        $out.Write($buf, 0, $n); $left -= $n
+                    }
                 } finally { $out.Dispose() }
             }
         } finally { $in.Dispose() }
