@@ -22,7 +22,7 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 
-$DefaultRepo = ""     # «владелец/репозиторий» на GitHub — заполнится, когда появится репозиторий
+$DefaultRepo = "farrgos0/BookReader"   # откуда update.bat -Online берёт обновления (выпуски на GitHub)
 $Root     = if ($env:BOOKREADER_ROOT) { $env:BOOKREADER_ROOT } else { Split-Path -Parent $PSScriptRoot }
 $DataDir  = if ($env:BOOKREADER_HOME) { $env:BOOKREADER_HOME } else { Join-Path $env:LOCALAPPDATA "BookReader" }
 $LogDir   = Join-Path $DataDir "logs"
