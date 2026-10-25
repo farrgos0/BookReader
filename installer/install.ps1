@@ -87,9 +87,10 @@ function Native([scriptblock]$sb) {
 }
 
 # Скачать файл. Уже скачанный целиком — не качается заново; прерванная загрузка (файл .part) продолжается с места обрыва.
-function Download($url, $dest, $what, [string]$sha256 = "") {
+# -Soft: при неудаче не прерывать установку, а вернуть $false (есть запасной путь)
+function Download($url, $dest, $what, [string]$sha256 = "", [switch]$Soft) {
     if (Test-Path $dest) {
-        if (-not $sha256 -or (Get-FileHash $dest -Algorithm SHA256).Hash -eq $sha256.ToUpper()) { Info "$what — уже скачан"; return }
+        if (-not $sha256 -or (Get-FileHash $dest -Algorithm SHA256).Hash -eq $sha256.ToUpper()) { Info "$what — уже скачан"; if ($Soft) { return $true }; return }
         Remove-Item $dest -Force
     }
     $part = "$dest.part"
@@ -110,6 +111,7 @@ function Download($url, $dest, $what, [string]$sha256 = "") {
             Invoke-WebRequest -Uri $url -OutFile $part -UseBasicParsing
             $ok = $true
         } catch {
+            if ($Soft) { Warn "не удалось скачать $what ($($_.Exception.Message))"; $ProgressPreference = "Continue"; return $false }
             Fail ("не удалось скачать $what ($($_.Exception.Message)). Проверьте интернет и запустите установку ещё раз — скачанное не пропадёт.`n`n" +
                   "Если сайт недоступен, скачайте файл вручную (через браузер, другой компьютер):`n  $url`n" +
                   "и положите его в папку`n  $(Split-Path $dest -Parent)`nпод именем`n  $(Split-Path $dest -Leaf)`nзатем снова запустите install.bat.")
@@ -120,6 +122,7 @@ function Download($url, $dest, $what, [string]$sha256 = "") {
         Fail "файл $what скачался с ошибкой (не совпала контрольная сумма). Запустите установку ещё раз."
     }
     Move-Item $part $dest -Force
+    if ($Soft) { return $true }
 }
 
 # Окно «Продолжить / Отмена» (если окно не открывается — например, мало памяти — спрашиваем в консоли)
@@ -187,6 +190,41 @@ function Local-Torch([string]$variant, [switch]$Check) {
     Move-Item $tmpw $dest -Force
     return $dest
 }
+# torch для видеокарты частями из выпуска на GitHub (архивы «…_NVIDIA_k_of_N.zip» той же версии):
+# человеку достаточно скачать один полный архив — части установщик докачает сам (с докачкой после обрыва).
+# Не получилось (нет интернета, репозиторий закрыт) — $false: тогда torch скачается с сайта PyTorch.
+$ReleaseRepo = "farrgos0/BookReader"
+function Get-NvidiaParts {
+    $info = if ($PkgMan -and $PkgMan.torch) { $PkgMan.torch.cu128 } else { $null }
+    if (-not $info -or -not $info.parts -or -not $info.file) { return $false }
+    $ver = $null
+    try { $ver = (Get-Content (Join-Path $Root "bookreader-files.json") -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch {}
+    if (-not $ver -and ([IO.File]::ReadAllText((Join-Path $Root "server.py")) -match '(?m)^VERSION = "([^"]+)"')) { $ver = $Matches[1] }
+    if (-not $ver) { return $false }
+    $dir = Join-Path $Pkg "wheels\cu128"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $n = [int]$info.parts
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    for ($k = 1; $k -le $n; $k++) {
+        $partFile = Join-Path $dir "$($info.file).part$k"
+        if (Test-Path $partFile) { continue }
+        $name = "BookReader_Server_v${ver}_NVIDIA_${k}_of_${n}.zip"
+        $zipPath = Join-Path $Cache $name
+        $ok = Download "https://github.com/$ReleaseRepo/releases/download/v$ver/$name" $zipPath "PyTorch для видеокарты с GitHub, часть $k из $n" -Soft
+        if (-not $ok) { return $false }
+        try {
+            $z = [IO.Compression.ZipFile]::OpenRead($zipPath)
+            try {
+                $e = $z.Entries | Where-Object { $_.FullName -like "*/wheels/cu128/*.part$k" } | Select-Object -First 1
+                if (-not $e) { throw "в архиве нет части $k" }
+                [IO.Compression.ZipFileExtensions]::ExtractToFile($e, $partFile, $true)
+            } finally { $z.Dispose() }
+            Remove-Item $zipPath -Force
+        } catch { Warn "архив $name повреждён ($($_.Exception.Message))"; Remove-Item $zipPath, $partFile -Force -ErrorAction SilentlyContinue; return $false }
+    }
+    return $true
+}
+
 # pip из пакетов (без интернета); не вышло (каких-то файлов нет) — обычная установка из интернета
 function Pip-Local([string[]]$pipArgs, $what, [string[]]$links, [string]$help = "") {
     $links = @($links | Where-Object { $_ -and (Test-Path $_) })
@@ -353,6 +391,7 @@ else {
     $lt = Local-Torch "cu128" -Check
     $gpuDl = if ($lt -and $lt -ne "missing" -and $nv -and $nv.Index -eq "cu128") { "Всё нужное — в архивах BookReader «NVIDIA», без загрузки из интернета" }
              elseif ($lt -eq "missing") { "Не все архивы «NVIDIA» распакованы в эту папку — недостающее (~3 ГБ) скачается" }
+             elseif ($PkgMan -and $PkgMan.torch -and $PkgMan.torch.cu128) { "Загрузка ~3 ГБ: установщик сам скачает PyTorch для видеокарты с GitHub" }
              else { "Загрузка ~3 ГБ" }
     $lt = Local-Torch "cpu" -Check
     $cpuDl = if ($lt -and $lt -ne "missing") { "Всё нужное — в архиве BookReader, без загрузки из интернета" } else { "Загрузка ~250 МБ" }
@@ -442,7 +481,8 @@ if (-not $torchOk -and -not $localTorch) {
     $pattern = if ($cudaIndex) { "torch-*$cudaIndex*" } else { "torch-*cpu*" }
     $got = Get-ChildItem $Cache -Filter $pattern -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 1
     if ($got) { $partMb = [math]::Min($torchMb, $got.Length / 1MB) }
-    Need ("PyTorch ({0})" -f $(if ($cudaIndex) { "видеокарта" } else { "процессор" }) + $(if ($partMb -gt 1) { ", докачка" } else { "" })) ($torchMb - $partMb)
+    $fromGh = $cudaIndex -eq "cu128" -and $PkgMan -and $PkgMan.torch -and $PkgMan.torch.cu128
+    Need ("PyTorch ({0})" -f $(if ($cudaIndex) { "видеокарта" } else { "процессор" }) + $(if ($fromGh) { ", с GitHub" }) + $(if ($partMb -gt 1) { ", докачка" } else { "" })) ($torchMb - $partMb)
 }
 $libMb = @{ numpy = 13; scipy = 41; omegaconf = 1; imageio_ffmpeg = 31 }
 if (-not $HaveCommon) { foreach ($m in $state.Missing) { Need $Mods[$m] $libMb[$m] } }
@@ -568,6 +608,9 @@ else {
     $index = if ($cudaIndex) { "https://download.pytorch.org/whl/$cudaIndex" } else { "https://download.pytorch.org/whl/cpu" }
     $what = "torch ($(if ($cudaIndex) { 'видеокарта, ' + $cudaIndex } else { 'процессор' }))"
     # 0) есть в пакетах установщика — ставим оттуда, без интернета
+    # частей NVIDIA рядом нет — сначала пробуем скачать их из выпуска на GitHub (той же версии, что этот архив)
+    $ghParts = $false
+    if (-not $localTorch -and $cudaIndex -eq "cu128" -and (Get-NvidiaParts)) { $localTorch = Local-Torch $torchVariant -Check; $ghParts = $true }
     if ($localTorch) { $localTorch = Local-Torch $torchVariant }   # части → один файл (в кэше)
     if ($localTorch -eq "missing") { $localTorch = $null }
     if ($localTorch) {
@@ -575,6 +618,8 @@ else {
         Pip-Local @($localTorch) "torch и его зависимости" @($PkgCommon)
         # собранный из частей файл (~3 ГБ) больше не нужен: части остаются в packages
         if ($localTorch.StartsWith($Cache)) { Remove-Item $localTorch -Force -ErrorAction SilentlyContinue }
+        # части, скачанные с GitHub только для этой установки, тоже не храним (ещё ~3 ГБ на диске)
+        if ($ghParts) { Get-ChildItem (Join-Path $Pkg "wheels\cu128") -Filter "*.part*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue }
         Ok "torch установлен"
     }
     # 1) узнаём точный файл torch и качаем его сами — с докачкой после обрыва (pip начинает 2,8 ГБ с нуля)
