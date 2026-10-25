@@ -554,8 +554,11 @@ if ($LASTEXITCODE -ne 0) { Fail "Python не запускается (возмо�
 Native { & $Py -m pip --version 2>$null | Out-Null }
 if ($LASTEXITCODE -ne 0) {
     $gp = Pkg-File "get-pip.py"
-    if ($gp) { Native { & $Py $gp --no-warn-script-location --no-index $(if ($HaveCommon) { "--find-links=$PkgCommon" }) } }
-    if (-not $gp -or $LASTEXITCODE -ne 0) {
+    # без интернета — только если в пакетах есть колесо pip (в старых сборках его не было: get-pip писал
+    # «No matching distribution found for pip», и установка молча шла дальше через интернет)
+    $pipWhl = $HaveCommon -and @(Get-ChildItem $PkgCommon -Filter "pip-*.whl" -ErrorAction SilentlyContinue).Count -gt 0
+    if ($gp -and $pipWhl) { Native { & $Py $gp --no-warn-script-location --no-index "--find-links=$PkgCommon" } }
+    if (-not $gp -or -not $pipWhl -or $LASTEXITCODE -ne 0) {
         $gp = Join-Path $Cache "get-pip.py"
         Download $GetPipUrl $gp "установщик пакетов pip"
         Native { & $Py $gp --no-warn-script-location }
