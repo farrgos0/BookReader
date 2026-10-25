@@ -33,3 +33,7 @@ bookreader-files.json
 
 # дубли pdf.js (читалка грузит *.min.js)
 web/vendor/pdfjs/*.mjs
+
+# личные помощники для git на этом ПК (пути к папкам этого ПК)
+git-sync.bat
+git-commit.bat
