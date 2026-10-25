@@ -1,5 +1,6 @@
 # BookReader — локальная озвучка книг без подписок и облаков
 
+[![Последняя версия](https://img.shields.io/github/v/release/farrgos0/BookReader?label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F)](https://github.com/farrgos0/BookReader/releases/latest)
 ![License: MIT-0](https://img.shields.io/badge/license-MIT--0-green)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
 ![.NET 10 MAUI](https://img.shields.io/badge/.NET-10%20MAUI-512BD4)
