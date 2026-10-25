@@ -54,7 +54,7 @@ CATALOG_DIR = os.path.join(ROOT, "catalog")   # книги, которые кл�
 # смена адреса «потеряла» бы книги пользователя.
 LOOPBACK = "127.0.0.1"
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 SAMPLE_RATE = 48000
 DEFAULT_SPEAKER = "aidar"
 MAX_CHUNK = 800          # Silero не любит слишком длинные куски
