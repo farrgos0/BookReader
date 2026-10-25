@@ -1,5 +1,5 @@
-﻿# Обновление установленного сервера BookReader из архива-обновления (BookReader_Server_vX.Y.Z_update.zip)
-# или полного архива. Запуск: update.bat (перетащите на него архив или положите архив рядом).
+﻿# Обновление установленного сервера BookReader: с GitHub (по умолчанию) или из архива-обновления
+# (BookReader_Server_vX.Y.Z_update.zip) / полного архива. Запуск: update.bat (или перетащите на него архив).
 #
 # Что делает (ничего не ломая, если что-то пошло не так):
 #   1. проверяет контрольную сумму архива (файл .sha256 рядом) и каждого файла внутри (список bookreader-files.json);
@@ -9,13 +9,15 @@
 #      свой Python, пакеты, каталог книг, настройки и журналы не трогает;
 #   5. если изменился список библиотек (requirements.txt) — доустанавливает недостающее (install.bat).
 #
-#   update.bat <архив.zip>   — обновить из архива
+#   update.bat               — проверить GitHub и скачать новую версию; нет интернета — архив рядом или выбрать вручную
+#   update.bat <архив.zip>   — обновить из архива (перетащить архив на update.bat)
 #   update.bat -Check        — есть ли новая версия на GitHub (код выхода 10 — есть, 0 — нет)
-#   update.bat -Online       — скачать новую версию с GitHub и обновить
+#   update.bat -Online       — только с GitHub (не получилось — ошибка, без поиска архивов)
+#   update.bat -Offline      — не ходить в интернет: только архив рядом или выбранный вручную
 #   -Yes                     — без вопросов
 # Откуда брать обновления на GitHub — "update_repo" в server.json (владелец/репозиторий) или $DefaultRepo ниже.
 
-param([string]$Archive = "", [switch]$Check, [switch]$Online, [switch]$Yes, [switch]$Bootstrapped)
+param([string]$Archive = "", [switch]$Check, [switch]$Online, [switch]$Offline, [switch]$Yes, [switch]$Bootstrapped)
 
 $ErrorActionPreference = "Stop"
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
@@ -55,7 +57,9 @@ if (-not (Test-Path $serverPy)) { Fail "здесь нет установленн
 $curVer = if ([IO.File]::ReadAllText($serverPy) -match '(?m)^VERSION = "([^"]+)"') { $Matches[1] } else { "0.0.0" }
 Info "установлена версия $curVer"
 
-# ---------- обновления с GitHub (основа; включится, когда будет репозиторий) ----------
+# ---------- откуда брать обновление ----------
+# По умолчанию — с GitHub (последний выпуск). Нет интернета или GitHub не ответил — из архива рядом
+# (папка BookReader, папка выше, «Загрузки») или из выбранного вручную. Архив новее, чем на GitHub, важнее.
 $cfg = $null
 try { $cfg = Get-Content (Join-Path $DataDir "server.json") -Raw -Encoding UTF8 | ConvertFrom-Json } catch {}
 $Repo = if ($cfg -and $cfg.update_repo) { "$($cfg.update_repo)" } else { $DefaultRepo }
@@ -73,36 +77,106 @@ function Get-LatestRelease {
         Zip = $zip.browser_download_url; ZipName = $zip.name; Sha = $(if ($sha) { $sha.browser_download_url } else { $null })
     }
 }
-if ($Check -or $Online) {
-    if (-not $Repo) { Fail "не указан репозиторий для обновлений (update_repo в $(Join-Path $DataDir 'server.json'))" }
-    try { $rel = Get-LatestRelease } catch { Fail "GitHub не ответил: $($_.Exception.Message)" }
-    if (-not $rel) { Fail "в последнем выпуске $Repo нет архива-обновления" }
-    $newer = (Parse-Ver $rel.Version) -gt (Parse-Ver $curVer)
-    if ($Check) {
-        if ($newer) { Write-Host "  Есть новая версия: $($rel.Version) (установлена $curVer)" -ForegroundColor Green; if ($rel.Notes) { Write-Host $rel.Notes }; exit 10 }
-        Write-Host "  Установлена последняя версия ($curVer)"; exit 0
-    }
-    if (-not $newer -and -not (Ask "Новее нет (на GitHub — $($rel.Version)). Всё равно переустановить?")) { exit 0 }
-    $dl = Join-Path $DataDir "cache"
-    New-Item -ItemType Directory -Force -Path $dl | Out-Null
-    $Archive = Join-Path $dl $rel.ZipName
+
+# скачать файл (curl из Windows — с докачкой; нет его — средствами PowerShell); $true — скачан
+function Fetch([string]$url, [string]$dest, [switch]$Quiet) {
     $curl = Join-Path $env:WINDIR "System32\curl.exe"
-    Info "скачиваю $($rel.ZipName)…"
-    & $curl -L --fail --retry 3 -C - -# -o $Archive $rel.Zip
-    if ($LASTEXITCODE -ne 0) { Fail "не скачался $($rel.Zip)" }
-    if ($rel.Sha) { & $curl -L --fail -s -o "$Archive.sha256" $rel.Sha }
+    if (Test-Path $curl) {
+        if ($Quiet) { & $curl -L --fail --retry 3 -s -o $dest $url 2>$null } else { & $curl -L --fail --retry 3 -C - -# -o $dest $url }
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $dest)) { return $true }
+    }
+    try {
+        $ProgressPreference = "SilentlyContinue"
+        Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -TimeoutSec 120 -Headers @{ "User-Agent" = "BookReader-updater" }
+        return $true
+    } catch { return $false } finally { $ProgressPreference = "Continue" }
 }
 
-# ---------- 1. какой архив ----------
-if (-not $Archive) {
-    # рядом с update.bat, в папке выше или в «Загрузках» — самый новый архив BookReader
+# архив выпуска с GitHub → путь в кэше (с файлом .sha256 рядом) или $null
+function Download-Release($rel) {
+    $dl = Join-Path $DataDir "cache"
+    New-Item -ItemType Directory -Force -Path $dl | Out-Null
+    # прежние скачанные обновления больше не нужны
+    Get-ChildItem $dl -Filter "BookReader_Server_v*_update.zip*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notlike "$($rel.ZipName)*" } | Remove-Item -Force -ErrorAction SilentlyContinue
+    $path = Join-Path $dl $rel.ZipName
+    Info "скачиваю $($rel.ZipName) с GitHub…"
+    if ($rel.Sha) {
+        Remove-Item "$path.sha256" -Force -ErrorAction SilentlyContinue
+        if (-not (Fetch $rel.Sha "$path.sha256" -Quiet)) { Warn "не скачалась контрольная сумма $($rel.ZipName).sha256"; return $null }
+    } else { Warn "в выпуске нет $($rel.ZipName).sha256 — архив проверю только по списку файлов внутри него" }
+    if ((Test-Path $path) -and (Test-Path "$path.sha256") -and
+        (Sha-File $path) -eq ((Get-Content "$path.sha256" -Raw) -split '\s+')[0].ToLower()) { Info "уже скачан"; return $path }
+    Remove-Item $path -Force -ErrorAction SilentlyContinue
+    if (-not (Fetch $rel.Zip $path)) { Warn "не скачался $($rel.Zip)"; Remove-Item $path -Force -ErrorAction SilentlyContinue; return $null }
+    return $path
+}
+
+# самый новый архив BookReader рядом: папка BookReader, папка выше, «Загрузки»
+function Find-LocalArchive {
     $dirs = @($Root, (Split-Path $Root -Parent), (Join-Path $env:USERPROFILE "Downloads")) | Where-Object { $_ -and (Test-Path $_) }
-    $found = $dirs | ForEach-Object { Get-ChildItem $_ -Filter "BookReader_Server_v*.zip" -File -ErrorAction SilentlyContinue } |
+    return $dirs | ForEach-Object { Get-ChildItem $_ -Filter "BookReader_Server_v*.zip" -File -ErrorAction SilentlyContinue } |
         Where-Object { $_.Name -match '^BookReader_Server_v([\d.]+)_(update|full)\.zip$' } |
         Sort-Object { Parse-Ver ($_.Name -replace '^BookReader_Server_v([\d.]+)_.*$', '$1') }, { $_.Name -like "*_update.zip" } -Descending |
         Select-Object -First 1
-    if ($found -and (Ask "Обновить из $($found.FullName)?")) { $Archive = $found.FullName }
+}
+$verOfZip = { param($f) ($f.Name -replace '^BookReader_Server_v([\d.]+)_.*$', '$1') }
+
+$rel = $null; $ghError = $null
+if (-not $Archive -and -not $Offline) {
+    if (-not $Repo) { $ghError = "не указан репозиторий для обновлений (update_repo в $(Join-Path $DataDir 'server.json'))" }
     else {
+        Info "проверяю обновления на GitHub ($Repo)…"
+        try { $rel = Get-LatestRelease; if (-not $rel) { $ghError = "в последнем выпуске нет архива-обновления" } }
+        catch { $ghError = "GitHub не ответил: $($_.Exception.Message)" }
+    }
+}
+
+if ($Check) {
+    if (-not $rel) { Fail $ghError }
+    if ((Parse-Ver $rel.Version) -gt (Parse-Ver $curVer)) {
+        Write-Host "  Есть новая версия: $($rel.Version) (установлена $curVer)" -ForegroundColor Green
+        if ($rel.Notes) { Write-Host $rel.Notes }
+        exit 10
+    }
+    Write-Host "  Установлена последняя версия ($curVer)"; exit 0
+}
+if ($Online -and -not $rel) { Fail $ghError }
+
+if (-not $Archive) {
+    $local = Find-LocalArchive
+    $localVer = if ($local) { Parse-Ver (& $verOfZip $local) } else { $null }
+    $cur = Parse-Ver $curVer
+    if ($rel) {
+        $ghVer = Parse-Ver $rel.Version
+        if ($local -and $localVer -ge $ghVer -and $localVer -gt $cur) {
+            # свой архив не старее GitHub (например, сборка для проверки) — скачивать нечего
+            if (Ask "Обновить до $(& $verOfZip $local) из $($local.FullName)?") { $Archive = $local.FullName } else { Write-Host "Отменено."; exit 0 }
+        } elseif ($ghVer -gt $cur) {
+            Write-Host ""
+            Write-Host "  Есть новая версия: $($rel.Version) (установлена $curVer)" -ForegroundColor Green
+            if ($rel.Notes) { Write-Host ""; Write-Host (($rel.Notes -split "`r?`n" | Select-Object -First 25) -join "`n"); Write-Host "" }
+            if (-not (Ask "Скачать и установить $($rel.Version)?")) { Write-Host "Отменено."; exit 0 }
+            $Archive = Download-Release $rel
+            if (-not $Archive) {
+                Warn "с GitHub скачать не получилось — можно обновить из архива, скачанного вручную"
+                if ($local -and $localVer -gt $cur -and (Ask "Обновить до $(& $verOfZip $local) из $($local.FullName)?")) { $Archive = $local.FullName }
+            }
+        } elseif ($Online) {
+            if (-not (Ask "Новее нет (на GitHub — $($rel.Version)). Всё равно переустановить?")) { exit 0 }
+            $Archive = Download-Release $rel
+            if (-not $Archive) { Fail "не удалось скачать обновление с GitHub" }
+        } else {
+            Ok "установлена последняя версия ($curVer)"
+            Write-Host "  Обновить из своего архива: перетащите его на update.bat"
+            exit 0
+        }
+    } else {
+        if ($ghError -and -not $Offline) { Warn "$ghError — ищу архив обновления на этом ПК" }
+        if ($local -and (Ask "Обновить из $($local.FullName)?")) { $Archive = $local.FullName }
+    }
+    if (-not $Archive) {
+        if ($Yes) { Fail "архив обновления не найден" }
         Add-Type -AssemblyName System.Windows.Forms
         $dlg = New-Object Windows.Forms.OpenFileDialog
         $dlg.Title = "Архив обновления BookReader"; $dlg.Filter = "Архив BookReader|BookReader_Server_v*.zip|ZIP|*.zip"
