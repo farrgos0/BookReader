@@ -16,6 +16,8 @@
 import re
 import sys
 
+import ru_nouns
+
 # ---------- количественные ----------
 
 UNITS = ["ноль", "один", "два", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"]
@@ -46,6 +48,25 @@ GEN = {
 }
 for _t in TEENS[1:]:
     GEN[_t] = _t[:-1] + "и"  # одиннадцать → одиннадцати
+
+# дательный и творительный (для «к 3 урокам», «с 2 главами»); предложный = родительный, кроме «одном/одной»
+DAT = dict(GEN)
+DAT.update({"один": "одному", "одна": "одной", "одно": "одному", "два": "двум", "две": "двум", "три": "трём",
+            "четыре": "четырём", "двести": "двумстам", "триста": "трёмстам", "четыреста": "четырёмстам",
+            "пятьсот": "пятистам", "шестьсот": "шестистам", "семьсот": "семистам", "восемьсот": "восьмистам",
+            "девятьсот": "девятистам", "ноль": "нолю"})
+INS = {"один": "одним", "одна": "одной", "одно": "одним", "два": "двумя", "две": "двумя", "три": "тремя",
+       "четыре": "четырьмя", "пять": "пятью", "шесть": "шестью", "семь": "семью", "восемь": "восемью",
+       "девять": "девятью", "десять": "десятью", "сорок": "сорока", "девяносто": "девяноста", "сто": "ста",
+       "двадцать": "двадцатью", "тридцать": "тридцатью", "пятьдесят": "пятьюдесятью",
+       "шестьдесят": "шестьюдесятью", "семьдесят": "семьюдесятью", "восемьдесят": "восемьюдесятью",
+       "двести": "двумястами", "триста": "тремястами", "четыреста": "четырьмястами", "пятьсот": "пятьюстами",
+       "шестьсот": "шестьюстами", "семьсот": "семьюстами", "восемьсот": "восемьюстами",
+       "девятьсот": "девятьюстами", "ноль": "нолём"}
+for _t in TEENS[1:]:
+    INS[_t] = _t[:-1] + "ью"  # одиннадцать → одиннадцатью
+PREP = dict(GEN)
+PREP.update({"один": "одном", "одна": "одной", "одно": "одном"})
 
 
 def plural(n, one, few, many):
@@ -89,7 +110,17 @@ def _groups(n):
 
 
 def cardinal(n, gender="m", case="nom"):
-    """Количественное числительное. case: nom или gen."""
+    """Количественное числительное. case: nom, acc, gen, dat, ins, prep (косвенные — до тысячи)."""
+    if case == "acc":
+        words = cardinal(n, gender, "nom").split()
+        if gender == "f" and words and words[-1] == "одна":
+            words[-1] = "одну"   # «за одну книгу»
+        return " ".join(words)
+    if case in ("dat", "ins", "prep"):
+        if not 0 <= n < 1000:
+            return cardinal(n, gender, "gen")
+        table = {"dat": DAT, "ins": INS, "prep": PREP}[case]
+        return " ".join(table.get(w, w) for w in cardinal(n, gender, "nom").split())
     if n == 0:
         return "ноль" if case == "nom" else "ноля"
     if n < 0:
@@ -350,11 +381,46 @@ def _next_word(text, pos):
 
 # ---------- основная функция ----------
 
+DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+
+def _date_case(prev):
+    """Падеж дня в дате по предлогу: «до первого», «к первому», «на первое»."""
+    if prev in ("до", "с", "со", "от", "после", "около", "для", "без", "из", "у", "кроме", "начиная"):
+        return "gen"
+    if prev in ("к", "ко"):
+        return "dat"
+    return "nom"
+
+
+def _clock_words(h, mm):
+    minutes = "ноль ноль" if mm == "00" else "ноль " + UNITS[int(mm)] if mm[0] == "0" else cardinal(int(mm))
+    return f"{cardinal(h)} {minutes}"
+
+
+class _YearMatch:
+    """Совпадение «2001 г.» и «2001г.» — с одинаковыми группами для year()."""
+    def __init__(self, m):
+        self._m = m
+
+    def group(self, i):
+        if i == 2:
+            return self._m.group(2) or self._m.group(3)
+        return self._m.group(i)
+
+    def start(self, *a):
+        return self._m.start(*a)
+
 ROMAN_RE = r"[IVXLC]+|[IVXLCХІС]*[ХІ][IVXLCХІС]*"
 NUM = r"\d+"
 
 
-def normalize(text):
+# личные настройки нормализатора (порядок даты и т. п.) — приходят от устройства вместе с запросом
+DEFAULT_OPTIONS = {"date_order": "dmy"}
+
+
+def normalize(text, options=None):
+    opts = dict(DEFAULT_OPTIONS, **(options or {}))
     if not re.search(r"\d|[IVXLC]", text):
         return text
 
@@ -376,6 +442,9 @@ def normalize(text):
         a_, b_ = int(m.group(1)), int(m.group(2))
         if b_ == 0:
             return m.group(0)
+        if re.search(r":\s*$", t[:m.start()]) and a_ <= b_:
+            # характеристики: «Уровень навыка: 5/10», «HP: 50/100» — «пять из десяти»
+            return f"{cardinal(a_)} из {cardinal(b_, 'm', 'gen')}"
         if 0 < a_ < b_ <= 100:
             one = a_ % 10 == 1 and a_ % 100 != 11
             den = ordinal(b_, "f", "nom") if one else ordinal(b_, "p", "gen")
@@ -383,6 +452,8 @@ def normalize(text):
         return f"{cardinal(a_)} на {cardinal(b_)}"
     t = re.sub(r"(?<![\d/.,])(\d{1,4})\s*/\s*(\d{1,4})(?![\d/.,])", fraction, t)
 
+    # плюс перед числом: «+25°», «(+15)»
+    t = re.sub(r"(?<![\w\d)])\+(?=\d)", "плюс ", t)
     # минус перед числом: «-5», «−5» (не диапазон 1941-1945)
     t = re.sub(r"(?<![\w\d])[−-](?=\d)", "минус ", t)
     # диапазоны 1941–1945, 5-10
@@ -390,19 +461,32 @@ def normalize(text):
     t = re.sub(r"(?<=\d)-(?=\d)", " — ", t)
 
     # даты 12.05.1987
-    def date_dmy_parts(d, mo, y, whole):
-        d, mo = int(d), int(mo)
-        if not (1 <= d <= 31 and 1 <= mo <= 12):
-            return whole
+    def date_dmy(m):
+        a_, b_, y = m.group(1), m.group(3), m.group(4)
+        d, mo = (int(b_), int(a_)) if opts.get("date_order") == "mdy" else (int(a_), int(b_))
+        if not (1 <= d <= DAYS_IN_MONTH[mo - 1] if 1 <= mo <= 12 else False):
+            return m.group(0)
         y = int(y) + (2000 if len(y) == 2 and int(y) < 30 else 1900 if len(y) == 2 else 0)
-        return f"{ordinal(d, 'n')} {MONTHS[mo - 1]} {ordinal(y, 'm', 'gen')} года"
-    t = re.sub(r"\b(\d{1,2})([./])(\d{1,2})\2(\d{4}|\d{2})\b", lambda m: date_dmy_parts(m.group(1), m.group(3), m.group(4), m.group(0)), t)
+        case = _date_case(_prev_word(t, m.start()))
+        return f"{ordinal(d, 'n', case)} {MONTHS[mo - 1]} {ordinal(y, 'm', 'gen')} года"
+    # 1.2.2001, 01.02.2001, 1.2.2001г., 1.2.2001 г., 12/05/1987
+    t = re.sub(r"(?<![\d.,/])(\d{1,2})([./])(\d{1,2})\2(\d{4}|\d{2})(?![\d])(?:\s*(?:г\.|года\b|г(?![\w])))?", date_dmy, t)
+
+    # 9:30 am, 9 AM, 11 P.M. — только рядом со временем
+    def ampm(m):
+        h, mm, pm = int(m.group(1)), m.group(2), m.group(3).lower() == "p"
+        if not 1 <= h <= 12 or (mm and int(mm) > 59):
+            return m.group(0)
+        h24 = h % 12 + (12 if pm else 0)
+        part = "ночи" if h24 < 4 else "утра" if h24 < 12 else "дня" if h24 < 17 else "вечера"
+        if mm:
+            return f"{_clock_words(h, mm)} {part}"
+        return f"{cardinal(h)} {plural(h, 'час', 'часа', 'часов')} {part}"
+    t = re.sub(r"\b(\d{1,2})(?::(\d{2}))?\s*([AaPp])\.?\s?[Mm]\.?(?![\w])", ampm, t)
 
     # время 12:30
     def clock(m):
-        mm = m.group(2)
-        minutes = "ноль ноль" if mm == "00" else "ноль " + UNITS[int(mm)] if mm[0] == "0" else cardinal(int(mm))
-        return f"{cardinal(int(m.group(1)))} {minutes}"
+        return _clock_words(int(m.group(1)), m.group(2))
     t = re.sub(r"\b(\d{1,2}):(\d{2})\b", clock, t)
 
     # день + месяц (+ год)
@@ -488,7 +572,8 @@ def normalize(text):
             g, c = YEAR[word]
             noun = m.group(2)
         return f"{ordinal(n, g, c)} {noun}"
-    t = re.sub(r"\b(\d{1,4})\s+(год|года|году|годом|годе|годы|годов|годах|годам|годами|гг\.|г\.)(?![\w])", year, t,
+    t = re.sub(r"\b(\d{1,4})(?:\s+(год|года|году|годом|годе|годы|годов|годах|годам|годами|гг\.|г\.)|\s*(гг\.|г\.))(?![\w])",
+               lambda m: year(_YearMatch(m)), t,
                flags=re.IGNORECASE)
 
     # сокращения веков: «XIX в.» → «XIX века», «в XX в.» → «в XX веке», «XIX—XX вв.» → «веков»
@@ -506,6 +591,15 @@ def normalize(text):
     t = re.sub(r"\b(\d{1,2})\s+(" + "|".join(CENTURY) + r")\b",
                lambda m: f"{ordinal(int(m.group(1)), *CENTURY[m.group(2).lower()])} {m.group(2)}", t, flags=re.IGNORECASE)
 
+    # «с 1 по 5 главу» → «с первой по пятую главу», «с 3 по 7 урок»
+    def from_to(m):
+        an = ru_nouns.analyses(m.group(4))
+        a = ru_nouns.pick(an, "по") if an else None
+        if not a or a[4] != "sg":
+            return m.group(0)
+        return f"{m.group(1)} {ordinal(int(m.group(2)), a[1], 'gen')} по {ordinal(int(m.group(3)), a[1], a[3])} {m.group(4)}"
+    t = re.sub(r"(?<![\w])([Сс]о?)\s+(\d{1,4})\s+по\s+(\d{1,4})\s+([А-Яа-яЁё]+)", from_to, t)
+
     t = _romans(t)
     t = _decimals_and_integers(t)
     return re.sub(r"[ \t]{2,}", " ", t)
@@ -522,15 +616,111 @@ _ABBR = [
     (r"\bстр\.\s?(?=\d)", "страница "),
     (r"\bгл\.\s?(?=\d|[IVXLC]+\b)", "глава "),
     (r"(?<!\d)(?<!\d\s)\bсм\.(?!\s?\d)", "смотри"),
+    (r"(?<=смотри )рис\.|\bрис\.\s?(?=\d)", "рисунок "),
 ]
 _MULT_UNIT = re.compile(r"\b(тысяч[аи]?|миллион(?:а|ов)?|миллиард(?:а|ов)?)\s+(кг|км|см|мм|руб|коп)\.?(?![\w])")
 
 
+# разговорные сокращения — целым словом, без учёта регистра
+COLLOQUIAL = {"спс": "спасибо", "пжлст": "пожалуйста", "пжл": "пожалуйста", "плз": "пожалуйста",
+              "мб": "может быть", "кмк": "как мне кажется", "оч": "очень"}
+# «норм» — и «нормально», и родительный падеж «норм» (нет норм): заменяем только после этих слов или одно в предложении
+_NORM_BEFORE = {"всё", "все", "вроде", "да", "ну", "это", "тоже", "так", "как", "вполне", "уже", "было",
+                "будет", "очень", "оч", "впринципе", "принципе", "норм", "и", "а", "но", "мне", "тебе", "нам", "там"}
+
+
+def _colloquial(text):
+    def word(m):
+        w = m.group(0)
+        rep = COLLOQUIAL.get(w.lower())
+        if not rep:
+            return w
+        return rep.capitalize() if w[0].isupper() else rep
+    text = re.sub(r"(?<![\w.])[А-Яа-яЁё]+(?![\w.])", word, text)
+
+    def norm_word(m):
+        before = text[:m.start()]
+        prev = re.search(r"([А-Яа-яЁё]+)[\s,]*$", before)
+        sentence_start = not re.search(r"[А-Яа-яЁё0-9]", re.split(r"[.!?…]\s*", before)[-1])
+        if sentence_start or (prev and prev.group(1).lower() in _NORM_BEFORE):
+            return "Нормально" if m.group(0)[0].isupper() else "нормально"
+        return m.group(0)
+    return re.sub(r"(?<![\w])[Нн]орм(?![\w])", norm_word, text)
+
+
+def _level_abbr(text):
+    """Листы персонажей: «1 ур.» → «первый уровень», «на 10 ур.» → «на десятом уровне», «ур. 5» → «уровень 5»."""
+    def num_lvl(m):
+        n = int(m.group(1))
+        case = ru_nouns.PREP_CASE.get(_prev_word(text, m.start()), "nom")
+        if case == "dat" and _prev_word(text, m.start()) == "по":
+            case = "dat"
+        return f"{ordinal(n, 'm', case)} {ru_nouns.form_of('уровень', case)}"
+    text = re.sub(r"(?<![\d.,])(\d{1,3})\s*ур\.(?![\w])", num_lvl, text)
+    text = re.sub(r"(?<![\w])ур\.\s*(?=\d)", "уровень ", text)
+    return re.sub(r"(?<![\w])ур\.(?![\w])", "уровень", text)
+
+
+# ---------- слова через точки: S.T.A.L.K.E.R., Щ.И.Т., Ф.С.Б. ----------
+
+RU_LETTERS = {"а": "а", "б": "бэ", "в": "вэ", "г": "гэ", "д": "дэ", "е": "е", "ё": "ё", "ж": "жэ", "з": "зэ",
+              "и": "и", "й": "и краткое", "к": "ка", "л": "эль", "м": "эм", "н": "эн", "о": "о", "п": "пэ",
+              "р": "эр", "с": "эс", "т": "тэ", "у": "у", "ф": "эф", "х": "ха", "ц": "цэ", "ч": "чэ", "ш": "ша",
+              "щ": "ща", "ъ": "твёрдый знак", "ы": "ы", "ь": "мягкий знак", "э": "э", "ю": "ю", "я": "я"}
+RU_VOWELS_SET = set("аеёиоуыэюя")
+# английское слово по словарю: функция «слово → русскими буквами или None» (ставит server.py, см. en_translit)
+EN_WORD = None
+EN_LETTER = None
+
+
+def _readable_ru(w):
+    """Можно ли прочитать буквы словом: ЩИТ, ГОСТ, ООН — да; ФСБ, США, СССР — нет."""
+    w = w.lower()
+    if len(w) < 2 or not any(c in RU_VOWELS_SET for c in w):
+        return False
+    if w[0] not in RU_VOWELS_SET and w[1] not in RU_VOWELS_SET:
+        return False
+    run = 0
+    for c in w:
+        run = 0 if c in RU_VOWELS_SET else run + 1
+        if run >= 3:
+            return False
+    return True
+
+
+def dotted_words(text):
+    """«S.T.A.L.K.E.R.» → «сталкер», «Щ.И.Т.а» → «щита», «Ф.С.Б.» → «эф-эс-бэ». Инициалы не трогаем."""
+    pat = re.compile(r"(?<![\w.])((?:[A-Z]\.){1,}[A-Z]|(?:[А-ЯЁ]\.){1,}[А-ЯЁ])(\.)?([а-яё]+)?(?![\w])")
+
+    def repl(m):
+        letters = m.group(1).replace(".", "")
+        suffix = m.group(3) or ""
+        before, after = text[:m.start()], text[m.end():]
+        if len(letters) <= 2 and not suffix and (
+                re.match(r"\s*[A-ZА-ЯЁ][a-zа-яё]", after) or re.search(r"[A-ZА-ЯЁ][a-zа-яё]+\s*$", before)):
+            return m.group(0)  # инициалы: «А.С. Пушкин», «Пушкин А.С.»
+        if letters in ("AM", "PM") and re.search(r"\d\s*$", before):
+            return m.group(0)  # время: «11 P.M.» — разберёт normalize()
+        end = ""
+        if letters.isascii():
+            word = EN_WORD(letters.lower()) if EN_WORD and len(letters) >= 4 else None
+            if word:
+                return word + suffix + end
+            names = [EN_LETTER(c.lower()) if EN_LETTER else c for c in letters]
+            return "-".join(names) + (("-" + suffix) if suffix else "") + end
+        if _readable_ru(letters):
+            return letters.lower() + suffix + end
+        return "-".join(RU_LETTERS.get(c.lower(), c) for c in letters) + (("-" + suffix) if suffix else "") + end
+    return pat.sub(repl, text)
+
+
 def abbreviations(text):
-    """«т. е.» → «то есть», «стр. 5» → «страница 5». Вызывать ДО normalize()."""
+    """«т. е.» → «то есть», «стр. 5» → «страница 5», «спс» → «спасибо». Вызывать ДО normalize()."""
     for pat, rep in _ABBR:
         text = re.sub(pat, rep, text)
-    return text
+    text = _level_abbr(text)
+    text = dotted_words(text)
+    return _colloquial(text)
 
 
 def units_after_words(text):
@@ -573,7 +763,13 @@ def _romans(t):
             return century(rng.group(1))
         if not latin_only:
             return tok  # кириллица, похожая на римские цифры, — только при «век»
-        # Глава IV, в главе IV, Том II
+        # Глава IV, в главе IV, Том II, Уровень IV — порядковое в роде и падеже слова
+        an = ru_nouns.analyses(prev) if prev else []
+        if an:
+            prep = _prev_two(t, m.start() - len(re.search(r"[\w-]*[\s\u00a0]*$", t[:m.start()]).group(0)))[1]
+            a = ru_nouns.pick(an, prep)
+            if a:
+                return ordinal(n, a[1], a[3])
         if prev in CHAPTER_NOUNS:
             return ordinal(n, *CHAPTER_NOUNS[prev])
         # Пётр I, Екатерины II
@@ -587,6 +783,41 @@ def _romans(t):
 
     # строка-заголовок целиком из римского числа: «IV.» → «четыре»
     return re.sub(roman_tok, repl, t)
+
+
+def _prev_two(text, pos):
+    """Два слова перед позицией: (предыдущее-перед-ним, ближайшее), в нижнем регистре."""
+    m = re.search(r"(?:([\w-]+)[\s\u00a0]+)?([\w-]+)[\s\u00a0]*$", text[:pos])
+    if not m:
+        return "", ""
+    return (m.group(1) or "").lower(), m.group(2).lower()
+
+
+def _number_by_noun(t, m, n, prev, nxt):
+    """Число рядом со словом из словаря (ru_nouns): «Глава 4», «на 3 этаже», «2 главы». None — не наш случай."""
+    an_next = ru_nouns.analyses(nxt) if nxt else []
+    if an_next:
+        for a in an_next:
+            if ru_nouns.count_agrees(n, a[3], a[4]):
+                case = a[3]
+                if case == "nom":
+                    pass
+                elif case == "acc":
+                    pass   # «за одну книгу», «купил двадцать одну книгу»
+                elif case == "gen":
+                    case = "gen" if prev in GEN_PREPS or prev in ("с", "со") else "nom"
+                return cardinal(n, a[1] if a[1] in "mfn" else "m", case)
+        a = ru_nouns.pick(an_next, prev)
+        if a:
+            return ordinal(n, a[1], a[3])
+        return None
+    an_prev = ru_nouns.analyses(prev) if prev else []
+    if an_prev and not re.match(r"\s*[-–—]\s*\d", t[m.end():]):
+        before, _ = _prev_two(t, m.start() - len(re.search(r"[\w-]+[\s\u00a0]*$", t[:m.start()]).group(0)))
+        a = ru_nouns.pick(an_prev, _)
+        if a:
+            return ordinal(n, a[1], a[3]) if a[2] == "ord" else cardinal(n)
+    return None
 
 
 def _decimals_and_integers(t):
@@ -603,9 +834,12 @@ def _decimals_and_integers(t):
         n = int(s)
         nxt = _next_word(t, m.end())
         prev = _prev_word(t, m.start())
+        by_noun = _number_by_noun(t, m, n, prev, nxt)
+        if by_noun:
+            return by_noun
         gender = "m"
         last = n % 10 if not 11 <= n % 100 <= 14 else 0
-        if nxt:
+        if nxt and nxt not in ru_nouns.PREP_CASE and nxt not in ("и", "или", "а", "но", "что", "как"):
             if last == 1 and nxt[-1] in "ая":
                 gender = "f"
             elif last == 1 and nxt[-1] in "оеё" and nxt not in ("ее", "её"):

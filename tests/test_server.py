@@ -53,6 +53,16 @@ class NormalizerCases(unittest.TestCase):
                 broken.append(f"стр. {r['line']}: «{r['text']}» → «{got}», ждём «{r['want']}»")
         self.assertFalse(broken, "\n" + "\n".join(broken))
 
+    def test_table_pause(self):
+        # «|» в строке таблицы не читается, а превращается в паузу (запятую)
+        self.assertEqual(server.clean_for_speech("Имя | 1 ур. | Класс"), "Имя, первый уровень, Класс")
+        self.assertNotIn("|", server.clean_for_speech("| a | b |"))
+
+    def test_date_order(self):
+        self.assertIn("первое февраля", server.clean_for_speech("1.2.2001"))
+        self.assertIn("второе января", server.clean_for_speech("1.2.2001", {"date_order": "mdy"}))
+        self.assertIn("двенадцатое мая", server.clean_for_speech("05/12/1987", {"date_order": "mdy"}))
+
 
 class BrokenFb2(unittest.TestCase):
     """Битый FB2 из конвертеров: абзацы вокруг строк таблицы, незакрытые теги — глава не теряется."""

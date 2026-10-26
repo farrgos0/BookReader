@@ -156,7 +156,7 @@
           break;
         case "table":
           el.querySelectorAll("tr").forEach((tr) =>
-            push("p", Array.from(tr.children).map((td) => norm(textOf(td))).join(" — "), { cls: "table" }));
+            push("p", Array.from(tr.children).map((td) => norm(textOf(td))).filter(Boolean).join(" | "), { cls: "table" }));
           break;
         case "section": walkSection(el, level + 1); break;
         default:

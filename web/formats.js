@@ -243,7 +243,7 @@
       if (tag === "blockquote") cls = "cite";
       if (tag === "table") {
         el.querySelectorAll("tr").forEach((tr) =>
-          this.push("p", Array.from(tr.children).map((c) => norm(c.textContent)).filter(Boolean).join(" — "), { cls: "table" }));
+          this.push("p", Array.from(tr.children).map((c) => norm(c.textContent)).filter(Boolean).join(" | "), { cls: "table" }));
         return;
       }
       if (tag === "svg") { el.querySelectorAll("image").forEach((i) => this.image(i)); return; }
@@ -633,7 +633,7 @@
           if (text) items.push(withSt({ kind: "p", text }, acc.get()));
           acc = null;
         } else if (t === "table-row") {
-          items.push({ kind: "p", text: Array.from(c.children).map((cell) => norm(cell.textContent)).filter(Boolean).join(" — "), cls: "table" });
+          items.push({ kind: "p", text: Array.from(c.children).map((cell) => norm(cell.textContent)).filter(Boolean).join(" | "), cls: "table" });
         } else if (t !== "tracked-changes" && t !== "sequence-decls") walk(c);
       }
     };

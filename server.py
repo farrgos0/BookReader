@@ -84,10 +84,33 @@ import ru_numbers
 ENGLISH = True  # --no-english выключает транслитерацию
 
 
-def numbers_to_words(text):
+def _en_word(low):
+    """Английское слово из словаря CMUdict русскими буквами (для «S.T.A.L.K.E.R.») или None."""
+    if not ENGLISH:
+        return None
+    try:
+        if low in (en_translit._cmu or {}) or low in en_translit._load_rules()["exceptions"]:
+            return en_translit.word_to_ru(low)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _en_letter(c):
+    try:
+        return en_translit._load_rules()["letter_names"].get(c, c)
+    except Exception:  # noqa: BLE001
+        return c
+
+
+ru_numbers.EN_WORD = _en_word
+ru_numbers.EN_LETTER = _en_letter
+
+
+def numbers_to_words(text, options=None):
     """Числа и римские цифры → слова (ru_numbers.py). Silero сама цифры не читает."""
     try:
-        text = ru_numbers.normalize(text)
+        text = ru_numbers.normalize(text, options)
     except Exception as e:  # noqa: BLE001 — озвучка не должна падать из-за одного абзаца
         print("ru_numbers: ошибка на тексте:", repr(text[:80]), repr(e))
     # подстраховка: если цифры всё же остались — читаем их по одной
@@ -99,14 +122,16 @@ LIGATURES = {"\ufb00": "ff", "\ufb01": "fi", "\ufb02": "fl", "\ufb03": "ffi", "\
 INVISIBLE = re.compile(r"[\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\x00-\x08\x0b-\x1f\x7f]")
 
 
-def clean_for_speech(text):
+def clean_for_speech(text, options=None):
+    """Текст → то, что читает Silero. options — личные настройки нормализатора (date_order: dmy|mdy)."""
     text = INVISIBLE.sub("", text)
     text = text.replace("\u00a0", " ").replace("\u2026", "...")
     text = text.replace("\u2013", "\u2014").replace("\u2011", "-").replace("\u00b1", " плюс-минус ")
     for k, v in LIGATURES.items():
         text = text.replace(k, v)
+    text = re.sub(r"\s*\|+\s*", ", ", text).strip(", ")   # ячейки таблицы: «|» не читаем, делаем паузу
     text = ru_numbers.abbreviations(text)
-    text = numbers_to_words(text)
+    text = numbers_to_words(text, options)
     text = ru_numbers.units_after_words(text)
     if ENGLISH:
         try:
