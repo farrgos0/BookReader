@@ -17,12 +17,23 @@
   }
   let data = load();
   const listeners = [];
+  // приложение: если хранилище страницы очистилось, а в настройках приложения правила есть — берём их оттуда
+  if (window.Native && !data.rules.length) {
+    window.Native.getPref("pron").then((j) => {
+      if (!j || data.rules.length) return;
+      try {
+        const d = JSON.parse(j);
+        if (d && Array.isArray(d.rules)) { data = { rules: d.rules, opts: d.opts || {} }; localStorage.setItem(KEY, j); }
+      } catch (_) {}
+    }).catch(() => {});
+  }
 
-  function save(next) {
+  async function save(next) {
     data = { rules: next.rules.filter((r) => r.w && r.s && !checkSay(r.s)), opts: next.opts || {} };
     const json = JSON.stringify(data);
     try { localStorage.setItem(KEY, json); } catch (_) {}
-    try { if (window.Native) window.Native.setPref("pron", json); } catch (_) {}   // нативная озвучка в приложении
+    // в приложении правила читает нативная озвучка — дожидаемся записи, прежде чем она возьмёт озвучку заново
+    try { if (window.Native) await window.Native.setPref("pron", json); } catch (_) {}
     listeners.forEach((f) => { try { f(data); } catch (_) {} });
   }
 
@@ -207,7 +218,7 @@
     };
     render();
     const v = await pr;
-    if (v === "save") { save(work); return true; }
+    if (v === "save") { await save(work); return true; }
     return false;
   }
 

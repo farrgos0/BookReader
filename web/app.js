@@ -2324,7 +2324,7 @@ window.addEventListener("error", (e) => {
       const wasPlaying = playing;
       clearAudioCache();
       if (wasPlaying && cur >= 0) readFrom(cur);
-    } else if (Native.handlers.pronChanged) Native.handlers.pronChanged();
+    } else Native.pronChanged();
     toast("Произношение сохранено", 2500);
   });
 

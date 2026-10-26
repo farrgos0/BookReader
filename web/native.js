@@ -189,6 +189,15 @@
     exportBooks: (ids) => jsonAsync("LibExportManyAsync", JSON.stringify(ids)), // системное «Поделиться» с исходным файлом книги
     catalog: () => jsonAsync("CatalogListAsync"),                       // { items: [...] } из папки catalog сервера
     catalogFetch: (id, name) => jsonAsync("CatalogFetchAsync", id, name), // { id, name, isNew } — уже в библиотеке
+    // личные правила произношения (pron.js): сохранены — нативная озвучка берёт текущую заново; «прослушать» — Blob
+    pronChanged: () => call("PronChanged").catch(() => {}),
+    pronPreview: async (text, voice, extraJson) => {
+      const r = await jsonAsync("PronPreviewAsync", text, voice, extraJson);
+      if (!r || !r.b64) throw new Error("сервер не ответил");
+      const bin = atob(r.b64), u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return new Blob([u8], { type: r.mime || "audio/ogg" });
+    },
   };
 
   // цвет темы → фон под системными панелями Android и цвет их значков
