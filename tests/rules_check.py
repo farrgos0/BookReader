@@ -1,6 +1,6 @@
 """Проверка личных правил на настоящей модели Silero: «е» в правиле остаётся «е», «ё» остаётся «ё».
 
-    python\\python.exe tests\\rules_check.py --out rules-report.txt
+    python\\python.exe tests\\rules_check.py --out     (отчёт — reports\\rules-report.txt)
 
 Для каждого слова — два правила без «+»: «слово → то же слово» и «слово → то же с «ё» вместо первой «е»»,
 и две фразы: слово в середине и в начале предложения. В синтез должна уйти ровно та буква, что в правиле,
@@ -25,7 +25,13 @@ WORDS = ("Королев Королева Селен Ковалев Горбач
 def main(argv):
     out_path = None
     if "--out" in argv:
-        i = argv.index("--out"); out_path = argv[i + 1]; argv = argv[:i] + argv[i + 2:]
+        i = argv.index("--out")
+        has = i + 1 < len(argv) and not argv[i + 1].startswith("-")
+        out_path = argv[i + 1] if has else "rules-report.txt"
+        argv = argv[:i] + argv[i + (2 if has else 1):]
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import report_path
+        out_path = report_path.resolve(out_path)
     words = WORDS
     if "--words" in argv:
         i = argv.index("--words"); words = [w.strip() for w in argv[i + 1].split(",") if w.strip()]

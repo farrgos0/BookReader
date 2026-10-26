@@ -293,7 +293,9 @@ PyTorch и модели) и установит его. Без интернета
   в редких омонимах и именах собственных (менее 10% от числа потенциально неоднозначных слов). Такие места
   пользователь может исправить личными правилами.
 - Проверочный набор — `tests/normalizer_cases.tsv` (текст → как должно звучать); отчёт:
-  `python tests/normalizer_cases.py --out report.txt`. Ударения и «ё» самой Silero: `python tests/accent_check.py "фраза"`.
+  `python tests/normalizer_cases.py --out`. Ударения и «ё» самой Silero: `python tests/accent_check.py "фраза"`;
+  личные правила на настоящей модели: `python tests/rules_check.py --out`. Отчёты (`--out`) складываются в папку
+  `reports/`, в git она не попадает.
 - `en_translit.py` + `data/en_ru.json` — английские слова русскими буквами: исключения из JSON → словарь
   CMUdict (скачивается сам при первом запуске) → аббревиатуры по буквам → запасные правила.
   `en_ru.json` можно править на ходу. Проверить: `python en_translit.py "Games Workshop released Warhammer"`.

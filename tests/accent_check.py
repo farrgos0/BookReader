@@ -1,7 +1,7 @@
 """Как Silero расставит ударения и «ё» во фразе — без озвучки.
 
     python\\python.exe tests\\accent_check.py "Королева вошла в зал." "у Селена" "Селен"
-    python\\python.exe tests\\accent_check.py --file phrases.txt --out accent-report.txt
+    python\\python.exe tests\\accent_check.py --file phrases.txt --out     (отчёт — reports\\accent-report.txt)
 
 Показывает три шага модели Silero v5_ru:
   1) омографы по контексту (нейросеть смотрит на всё предложение: «королева» → корол+ева / корол+ёва);
@@ -21,8 +21,12 @@ def main(argv):
     out_path = None
     if "--out" in argv:
         i = argv.index("--out")
-        out_path = argv[i + 1]
-        argv = argv[:i] + argv[i + 2:]
+        has = i + 1 < len(argv) and not argv[i + 1].startswith("-")
+        out_path = argv[i + 1] if has else "accent-report.txt"
+        argv = argv[:i] + argv[i + (2 if has else 1):]
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import report_path
+        out_path = report_path.resolve(out_path)
     phrases = []
     if "--file" in argv:
         i = argv.index("--file")

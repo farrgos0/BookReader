@@ -37,3 +37,6 @@ web/vendor/pdfjs/*.mjs
 # личные помощники для git на этом ПК (пути к папкам этого ПК)
 git-sync.bat
 git-commit.bat
+
+# отчёты проверочных скриптов (tests/*.py --out)
+reports/

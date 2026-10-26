@@ -2,8 +2,8 @@
 
 Отчёт:  python tests/normalizer_cases.py         — все случаи: что ждём и что получается сейчас
         python tests/normalizer_cases.py todo    — только то, что ещё не сделано
-        python tests/normalizer_cases.py --out normalizer-report.txt  — в файл (UTF-8; перенаправление «>»
-                                                  в Windows PowerShell портит кодировку)
+        python tests/normalizer_cases.py --out [имя.txt]  — в файл reports/normalizer-report.txt (UTF-8;
+                                                  перенаправление «>» в Windows PowerShell портит кодировку)
 Тест (unittest): случаи «ok» должны совпадать всегда; «todo» только считаются.
 """
 import contextlib
@@ -55,8 +55,12 @@ def main(argv):
     out_path = None
     if "--out" in argv:
         i = argv.index("--out")
-        out_path = argv[i + 1] if i + 1 < len(argv) else "normalizer-report.txt"
-        argv = argv[:i] + argv[i + 2:]
+        has = i + 1 < len(argv) and not argv[i + 1].startswith("-") and argv[i + 1] != "todo"
+        out_path = argv[i + 1] if has else "normalizer-report.txt"
+        argv = argv[:i] + argv[i + (2 if has else 1):]
+        sys.path.insert(0, HERE)
+        import report_path
+        out_path = report_path.resolve(out_path)
     if out_path:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
