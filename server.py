@@ -223,7 +223,7 @@ class SileroEngine:
         if "put_yo" in params:
             self.extra["put_yo"] = True
         # своя расстановка ударений и «ё» (ru_yo.py): Silero ошибается в именах; готовый текст — без авторасстановки
-        self.accentor = getattr(model, "accentor", None) if all(
+        self.accentor = ru_yo.find_accentor(model) if all(
             k in params for k in ("put_accent", "put_yo", "put_stress_homo", "put_yo_homo")) else None
         self.no_auto = {"put_accent": False, "put_yo": False, "put_stress_homo": False, "put_yo_homo": False}
         if self.accentor is None:

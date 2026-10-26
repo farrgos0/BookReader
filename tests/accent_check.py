@@ -37,10 +37,12 @@ def main(argv):
     with contextlib.redirect_stdout(io.StringIO()):
         import server
         model = server.load_silero()
-    acc = getattr(model, "accentor", None)
+    import ru_yo
+    acc = ru_yo.find_accentor(model)
     lines = []
     if acc is None:
-        lines.append("В этой версии модели нет accentor — проверка невозможна.")
+        lines.append("В этой версии модели нет accentor — проверка невозможна. Атрибуты модели: " +
+                     ", ".join(a for a in dir(model) if not a.startswith("_")))
     else:
         for p in phrases:
             homo = acc.homosolver(p, put_stress=True, put_yo=True) if hasattr(acc, "homosolver") else p

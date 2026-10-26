@@ -130,3 +130,19 @@ def prepare(text, accentor, protect=()):
         if i < len(seps):
             res.append(seps[i])
     return "".join(res)
+
+
+def find_accentor(model, speaker=None):
+    """Расстановка ударений внутри модели Silero: у v5 она в model.packages[…].accentor (у старых — model.accentor)."""
+    acc = getattr(model, "accentor", None)
+    if acc is not None:
+        return acc
+    packages = getattr(model, "packages", None) or []
+    if speaker is not None and hasattr(model, "speaker_to_package"):
+        i = model.speaker_to_package.get(speaker)
+        if i is not None and getattr(packages[i], "accentor", None) is not None:
+            return packages[i].accentor
+    for p in packages:
+        if getattr(p, "accentor", None) is not None:
+            return p.accentor
+    return None
