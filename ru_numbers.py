@@ -16,6 +16,7 @@
 import re
 import sys
 
+import ru_names
 import ru_nouns
 
 # ---------- количественные ----------
@@ -668,6 +669,8 @@ RU_LETTERS = {"а": "а", "б": "бэ", "в": "вэ", "г": "гэ", "д": "дэ"
               "р": "эр", "с": "эс", "т": "тэ", "у": "у", "ф": "эф", "х": "ха", "ц": "цэ", "ч": "чэ", "ш": "ша",
               "щ": "ща", "ъ": "твёрдый знак", "ы": "ы", "ь": "мягкий знак", "э": "э", "ю": "ю", "я": "я"}
 RU_VOWELS_SET = set("аеёиоуыэюя")
+# сокращения, которые принято читать не по названиям букв (с точками и без)
+ACRONYMS = {"США": "сэ-шэ-а"}
 # английское слово по словарю: функция «слово → русскими буквами или None» (ставит server.py, см. en_translit)
 EN_WORD = None
 EN_LETTER = None
@@ -708,6 +711,8 @@ def dotted_words(text):
                 return word + suffix + end
             names = [EN_LETTER(c.lower()) if EN_LETTER else c for c in letters]
             return "-".join(names) + (("-" + suffix) if suffix else "") + end
+        if letters in ACRONYMS:
+            return ACRONYMS[letters] + (("-" + suffix) if suffix else "")
         if _readable_ru(letters):
             return letters.lower() + suffix + end
         return "-".join(RU_LETTERS.get(c.lower(), c) for c in letters) + (("-" + suffix) if suffix else "") + end
@@ -719,7 +724,9 @@ def abbreviations(text):
     for pat, rep in _ABBR:
         text = re.sub(pat, rep, text)
     text = _level_abbr(text)
+    text = ru_names.initials(text)
     text = dotted_words(text)
+    text = re.sub(r"(?<![\w])(" + "|".join(ACRONYMS) + r")(?![\w])", lambda m: ACRONYMS[m.group(1)], text)
     return _colloquial(text)
 
 
@@ -795,7 +802,8 @@ def _prev_two(text, pos):
 
 def _number_by_noun(t, m, n, prev, nxt):
     """Число рядом со словом из словаря (ru_nouns): «Глава 4», «на 3 этаже», «2 главы». None — не наш случай."""
-    an_next = ru_nouns.analyses(nxt) if nxt else []
+    # слово с заглавной после числа — обычно начало нового (заголовок, ячейка): «1 000 000 Уровень навыка»
+    an_next = ru_nouns.analyses(nxt) if nxt and not re.match(r"[\s\u00a0]*[А-ЯЁ]", t[m.end():]) else []
     if an_next:
         for a in an_next:
             if ru_nouns.count_agrees(n, a[3], a[4]):
