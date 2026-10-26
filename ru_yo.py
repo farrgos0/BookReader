@@ -100,9 +100,12 @@ def prepare(text, accentor, protect=()):
     protect — номера слов, которые не трогать (личные правила)."""
     mark = "\ue000"   # ru_rules.MARK: слово личного правила — не трогаем
     parts = re.split(r"(\s+)", text)
-    # слово правила с «+» или «ё» — ровно как записано; без них — ударение ставит Silero (иначе звучит плохо)
-    marked = {k // 2 for k, p in enumerate(parts) if k % 2 == 0 and mark in p and ("+" in p or "ё" in p.lower())}
-    if marked:
+    # слово личного правила с «+» — ровно как записано. Без «+» ударение ставит Silero (иначе звучит плохо),
+    # но буквы — как в правиле: «е» остаётся «е» («Королев» → «Королев»), «ё» остаётся «ё» («Королёв»)
+    rule_words = {k // 2 for k, p in enumerate(parts) if k % 2 == 0 and mark in p}
+    marked = {i for i in rule_words if "+" in parts[2 * i]}
+    no_yo = rule_words - marked
+    if rule_words:
         protect = set(protect) | marked
         parts = [p.replace(mark, "") for p in parts]
         text = "".join(parts)
@@ -132,6 +135,9 @@ def prepare(text, accentor, protect=()):
     for i, (orig, a) in enumerate(zip(tokens, acc_tokens)):
         if i in protect:
             out.append(orig)
+            continue
+        if i in no_yo:
+            out.append(_drop_new_yo(orig, a))
             continue
         if i in lowered:
             # начало предложения: ударение — как Silero решила сама; а если с заглавной и со строчной
