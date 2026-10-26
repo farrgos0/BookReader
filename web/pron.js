@@ -99,6 +99,12 @@
     const body = ctx.askEl.body;
     const saveBtn = ctx.askEl.actions.querySelector('[data-i="1"]');
     const list = body.querySelector("#prList");
+    // кнопки (▶, ✕, флажок) не забирают фокус у поля ввода: на телефоне иначе прячется клавиатура,
+    // окно сдвигается — и касание попадает не туда (например, в выбор даты)
+    body.addEventListener("pointerdown", (e) => {
+      const a = document.activeElement;
+      if (a && a.matches && a.matches(".pr-w, .pr-s") && e.target.closest("button, .pr-case")) e.preventDefault();
+    });
     body.querySelector("#prDate").value = work.opts.date_order || "dmy";
     body.querySelector("#prDate").onchange = (e) => { work.opts.date_order = e.target.value; };
 
