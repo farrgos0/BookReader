@@ -332,8 +332,11 @@ $include = @(   # пути через «/» — работает и в Windows
     "BookReader.bat", "install.bat", "uninstall.bat", "update.bat", "start-reader.bat", "start-reader-gpu.bat",
     "README.md", "LICENSE", "LICENSE.ru.txt", "THIRD_PARTY_NOTICES.md",
     "data/en_ru.json",
+    "data/third_party/nemo_ru/abbreviations.tsv", "data/third_party/nemo_ru/measurements.tsv",
+    "data/third_party/nemo_ru/currency_singular.tsv", "data/third_party/nemo_ru/currency_plural.tsv",
+    "data/third_party/nemo_ru/months_abbr.tsv", "data/third_party/nemo_ru/LICENSE", "data/third_party/nemo_ru/README.md",
     "installer/install.ps1", "installer/uninstall.ps1", "installer/update.ps1", "installer/launcher.cs",
-    "tests/test_server.py",
+    "tests/test_server.py", "tests/normalizer_cases.py", "tests/normalizer_cases.tsv",
     "catalog/ПРОЧТИ.txt"
 )
 $files = New-Object System.Collections.Generic.List[string]

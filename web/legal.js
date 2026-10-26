@@ -16,6 +16,7 @@ window.LEGAL = {
     ["FFmpeg (imageio-ffmpeg)", "LGPL/GPL"],
     ["CMUdict", "BSD-2-Clause"],
     ["pdf.js", "Apache-2.0"],
+    ["Данные нормализации NVIDIA NeMo text-processing", "Apache-2.0, © NVIDIA Corporation"],
     [".NET MAUI, sqlite-net", "MIT"],
     ["SQLitePCLRaw", "Apache-2.0"],
     ["SQLite", "Public Domain"],

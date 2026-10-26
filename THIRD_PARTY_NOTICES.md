@@ -13,6 +13,7 @@
 | FFmpeg (через пакет imageio-ffmpeg) | сервер, сжатие в Opus | LGPL/GPL (зависит от сборки) | в архиве релиза — колесо imageio-ffmpeg из PyPI без изменений (`packages/wheels/common`); исходники FFmpeg — https://ffmpeg.org/download.html |
 | CMUdict | сервер, произношение английских слов | BSD-2-Clause | в архиве релиза — `packages/cmudict.dict` |
 | pdf.js (Mozilla) | веб-интерфейс, чтение PDF | Apache-2.0 | файл `web/vendor/pdfjs/LICENSE` |
+| Данные русской нормализации NVIDIA NeMo text-processing (© 2021 NVIDIA Corporation) | сервер, чтение сокращений, единиц и валют | Apache-2.0 | `data/third_party/nemo_ru` — файлы без изменений, `LICENSE` и `README.md` с источником там же |
 | .NET MAUI, .NET | приложение | MIT | — |
 | sqlite-net | приложение | MIT | — |
 | SQLitePCLRaw | приложение | Apache-2.0 | — |

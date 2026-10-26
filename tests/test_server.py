@@ -38,6 +38,22 @@ def free_port():
     return p
 
 
+class NormalizerCases(unittest.TestCase):
+    """tests/normalizer_cases.tsv: случаи «ok» не должны ломаться (отчёт: python tests/normalizer_cases.py)."""
+
+    def test_cases(self):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import normalizer_cases as nc
+        broken = []
+        for r in nc.load():
+            if r["state"] != "ok":
+                continue
+            got = nc.speak(r["text"])
+            if not nc.same(got, r["want"]):
+                broken.append(f"стр. {r['line']}: «{r['text']}» → «{got}», ждём «{r['want']}»")
+        self.assertFalse(broken, "\n" + "\n".join(broken))
+
+
 class BrokenFb2(unittest.TestCase):
     """Битый FB2 из конвертеров: абзацы вокруг строк таблицы, незакрытые теги — глава не теряется."""
 
@@ -58,6 +74,7 @@ class BrokenFb2(unittest.TestCase):
         self.assertEqual(len(blocks), 2)
 
 
+class Numbers(unittest.TestCase):
     """Числа, даты, единицы, сокращения → слова."""
     CASES = {
         "123": "сто двадцать три",
