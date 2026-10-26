@@ -100,7 +100,8 @@ def prepare(text, accentor, protect=()):
     protect — номера слов, которые не трогать (личные правила)."""
     mark = "\ue000"   # ru_rules.MARK: слово личного правила — не трогаем
     parts = re.split(r"(\s+)", text)
-    marked = {k // 2 for k, p in enumerate(parts) if k % 2 == 0 and mark in p}
+    # слово правила с «+» или «ё» — ровно как записано; без них — ударение ставит Silero (иначе звучит плохо)
+    marked = {k // 2 for k, p in enumerate(parts) if k % 2 == 0 and mark in p and ("+" in p or "ё" in p.lower())}
     if marked:
         protect = set(protect) | marked
         parts = [p.replace(mark, "") for p in parts]
