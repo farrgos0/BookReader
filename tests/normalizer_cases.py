@@ -2,6 +2,8 @@
 
 Отчёт:  python tests/normalizer_cases.py         — все случаи: что ждём и что получается сейчас
         python tests/normalizer_cases.py todo    — только то, что ещё не сделано
+        python tests/normalizer_cases.py --out normalizer-report.txt  — в файл (UTF-8; перенаправление «>»
+                                                  в Windows PowerShell портит кодировку)
 Тест (unittest): случаи «ok» должны совпадать всегда; «todo» только считаются.
 """
 import contextlib
@@ -50,8 +52,25 @@ def speak(text):
 
 
 def main(argv):
+    out_path = None
+    if "--out" in argv:
+        i = argv.index("--out")
+        out_path = argv[i + 1] if i + 1 < len(argv) else "normalizer-report.txt"
+        argv = argv[:i] + argv[i + 2:]
+    if out_path:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = report(argv)
+        with open(out_path, "w", encoding="utf-8-sig") as f:   # с BOM — Блокнот и PowerShell откроют правильно
+            f.write(buf.getvalue())
+        print(f"report: {os.path.abspath(out_path)}")
+        return code
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    return report(argv)
+
+
+def report(argv):
     only_todo = "todo" in argv
     rows = load()
     good = bad = todo_done = 0
