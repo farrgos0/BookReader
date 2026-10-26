@@ -328,7 +328,7 @@ if (-not $NoPackages) {
 # ---------- 5. состав архива (белый список) ----------
 Step "Сборка архива"
 $include = @(   # пути через «/» — работает и в Windows
-    "server.py", "paths.py", "assemble.py", "en_translit.py", "ru_numbers.py", "ru_nouns.py", "ru_names.py", "ru_yo.py", "requirements.txt",
+    "server.py", "paths.py", "assemble.py", "en_translit.py", "ru_numbers.py", "ru_nouns.py", "ru_names.py", "ru_yo.py", "ru_rules.py", "requirements.txt",
     "BookReader.bat", "install.bat", "uninstall.bat", "update.bat", "start-reader.bat", "start-reader-gpu.bat",
     "README.md", "LICENSE", "LICENSE.ru.txt", "THIRD_PARTY_NOTICES.md",
     "data/en_ru.json",

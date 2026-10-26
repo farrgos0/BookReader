@@ -88,6 +88,28 @@ class Yo(unittest.TestCase):
         self.assertEqual(p("— Пчелы! — крикнул он."), "— Пчёл+ы! — крикнул он.")  # «ё» по строчной   # ударение — как Silero решила с заглавной
 
 
+class Rules(unittest.TestCase):
+    """Личные правила произношения (ru_rules): важнее встроенных, слова замены помечены «не трогать»."""
+
+    def test_apply(self):
+        import ru_rules
+        p = ru_rules.Pron([{"w": "гг", "s": "главный герой"}, {"w": "Селен", "c": True, "s": "Сел+ен"},
+                           {"w": "т.е.", "s": "то бишь"}, {"w": "x", "s": "abc"}], {"date_order": "mdy"})
+        self.assertEqual(len(p.rules), 3)                      # правило с латиницей отброшено
+        say = lambda t: ru_rules.strip(server.clean_for_speech(t, pron=p))
+        self.assertEqual(say("ГГ пришёл."), "главный герой пришёл.")
+        self.assertEqual(say("Селен и селен."), "Сел+ен и селен.")  # регистр
+        self.assertEqual(say("т.е. так"), "то бишь так")          # важнее встроенного «то есть»
+        self.assertIn("второе января", say("1.2.2001"))           # личная настройка дат
+        self.assertNotEqual(p.key, ru_rules.EMPTY.key)
+
+    def test_check_say(self):
+        import ru_rules
+        self.assertIsNone(ru_rules.check_say("зам+ок"))
+        for bad in ("5 раз", "ok", "з+мок", "а++б", "", "a/b"):
+            self.assertIsNotNone(ru_rules.check_say(bad), bad)
+
+
 class BrokenFb2(unittest.TestCase):
     """Битый FB2 из конвертеров: абзацы вокруг строк таблицы, незакрытые теги — глава не теряется."""
 

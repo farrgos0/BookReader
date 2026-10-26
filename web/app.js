@@ -345,7 +345,7 @@ window.addEventListener("error", (e) => {
     try {
       let resp;
       c.ctl = new AbortController();     // сменили книгу — запрос к серверу отменяется
-      const body = JSON.stringify({ text: segs[next].text, speaker: c.voice, pause: segs[next].pause });
+      const body = JSON.stringify({ text: segs[next].text, speaker: c.voice, pause: segs[next].pause, ...Pron.payload(bookId) });
       for (let attempt = 0; ; attempt++) {
         resp = await fetch("api/tts", {
           method: "POST",
@@ -2300,6 +2300,34 @@ window.addEventListener("error", (e) => {
       <details><summary>Оригинал (English)</summary><pre>${esc(L.licenseEn)}</pre></details>
       <details><summary>Сторонние компоненты</summary><table>${L.thirdParty.map(([n, l]) => `<tr><td>${esc(n)}</td><td>${esc(l)}</td></tr>`).join("")}</table></details>`;
   }
+  // ---------- личные правила произношения (pron.js) ----------
+  $("btnPron").onclick = () => Pron.dialog({
+    ask, askEl, esc, toast,
+    library: async () => (await Library.list()).map((b) => ({ id: b.id, title: b.title || b.name || b.id })),
+    catalog: () => (catItems || []).map((c) => ({ id: c.id, title: c.title || c.name || c.id })),
+    speak: async (text, extra) => {
+      if (Native) {   // в приложении — через нативную часть (у неё адрес сервера)
+        if (!Native.pronPreview) throw new Error("обновите приложение");
+        return Native.pronPreview(text, el.voice.value, JSON.stringify({ ...Pron.payload(bookId), ...extra }));
+      }
+      const r = await fetch("api/tts", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, speaker: el.voice.value, pause: 0.1, ...Pron.payload(bookId), ...extra }),
+      });
+      if (!r.ok) throw new Error(await httpError(r, "tts"));
+      return r.blob();
+    },
+  }).then((saved) => {
+    if (!saved) return;
+    act("правила произношения сохранены");
+    if (!Native) {                       // браузер: уже полученная озвучка — со старыми правилами, получаем заново
+      const wasPlaying = playing;
+      clearAudioCache();
+      if (wasPlaying && cur >= 0) readFrom(cur);
+    } else if (Native.handlers.pronChanged) Native.handlers.pronChanged();
+    toast("Произношение сохранено", 2500);
+  });
+
   $("btnLicense").onclick = () => ask("Лицензия BookReader", licenseHtml(), [{ label: "Закрыть", primary: true, value: 1 }]);
 
   // первый запуск приложения: соглашение → подключить сервер? → если нет, где это сделать

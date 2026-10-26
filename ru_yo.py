@@ -98,7 +98,13 @@ def _drop_new_yo(orig, acc):
 def prepare(text, accentor, protect=()):
     """Текст с ударениями и «ё» для синтеза. accentor — model.accentor Silero.
     protect — номера слов, которые не трогать (личные правила)."""
+    mark = "\ue000"   # ru_rules.MARK: слово личного правила — не трогаем
     parts = re.split(r"(\s+)", text)
+    marked = {k // 2 for k, p in enumerate(parts) if k % 2 == 0 and mark in p}
+    if marked:
+        protect = set(protect) | marked
+        parts = [p.replace(mark, "") for p in parts]
+        text = "".join(parts)
     tokens = parts[0::2]
     starts = sentence_starts(tokens)
     lowered = set()

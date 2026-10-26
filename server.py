@@ -80,6 +80,7 @@ SPEAKER_NAMES = {
 
 import en_translit
 import ru_numbers
+import ru_rules
 import ru_yo
 
 ENGLISH = True  # --no-english выключает транслитерацию
@@ -123,9 +124,13 @@ LIGATURES = {"\ufb00": "ff", "\ufb01": "fi", "\ufb02": "fl", "\ufb03": "ffi", "\
 INVISIBLE = re.compile(r"[\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\x00-\x08\x0b-\x1f\x7f]")
 
 
-def clean_for_speech(text, options=None):
-    """Текст → то, что читает Silero. options — личные настройки нормализатора (date_order: dmy|mdy)."""
+def clean_for_speech(text, options=None, pron=None):
+    """Текст → то, что читает Silero. options — личные настройки нормализатора (date_order: dmy|mdy);
+    pron — личные правила произношения устройства (ru_rules.Pron): применяются первыми, их слова никто не трогает."""
     text = INVISIBLE.sub("", text)
+    if pron is not None and pron.key:
+        text = pron.apply(text)
+        options = dict(options or {}, **pron.opts)
     text = text.replace("\u00a0", " ").replace("\u2026", "...")
     text = text.replace("\u2013", "\u2014").replace("\u2011", "-").replace("\u00b1", " плюс-минус ")
     for k, v in LIGATURES.items():
@@ -140,7 +145,8 @@ def clean_for_speech(text, options=None):
         except Exception as e:  # noqa: BLE001
             print("en_translit: ошибка на тексте:", repr(text[:80]), repr(e))
     text = re.sub(r"[\[\]{}<>*#_`~|/\\]", " ", text)
-    text = re.sub(r"[^\w\s.,!?:;—\-()\"'«»„“”]", " ", text)
+    text = re.sub(r"[^\w\s.,!?:;—\-()\"'«»„“”+" + ru_rules.MARK + "]", " ", text)
+    text = re.sub(r"\+(?![аеёиоуыэюяАЕЁИОУЫЭЮЯ])", " ", text)   # «+» остаётся только как ударение
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -245,7 +251,7 @@ class SileroEngine:
         if self.accentor is None:
             return None
         try:
-            return ru_yo.prepare(text, self.accentor)
+            return ru_yo.prepare(text, self.accentor)   # слова личных правил (ru_rules.MARK) ru_yo не трогает
         except Exception as e:  # noqa: BLE001 — не мешаем синтезу
             print("Ударения: ошибка на тексте", repr(text[:60]), repr(e))
             return None
@@ -258,11 +264,11 @@ class SileroEngine:
                     audio = self.model.apply_tts(text=acc, speaker=speaker, sample_rate=SAMPLE_RATE, **self.no_auto)
                 else:
                     audio = self.model.apply_tts(
-                        text=text, speaker=speaker, sample_rate=SAMPLE_RATE, **self.extra
+                        text=ru_rules.strip(text), speaker=speaker, sample_rate=SAMPLE_RATE, **self.extra
                     )
             except Exception:
                 # иногда модель спотыкается о символы — пробуем только буквы и пунктуацию
-                simple = re.sub(r"[^А-Яа-яЁё0-9\s.,!?—\-]", " ", text)
+                simple = re.sub(r"[^А-Яа-яЁё0-9\s.,!?—\-+]", " ", ru_rules.strip(text))
                 simple = re.sub(r"\s+", " ", simple).strip()
                 if not has_letters(simple):
                     return np.zeros(0, dtype=np.float32)
@@ -478,9 +484,9 @@ class Synthesizer:
             return DEFAULT_SPEAKER if DEFAULT_SPEAKER in self.engine.speakers else self.engine.speakers[0]
         return speaker
 
-    def pcm(self, text, speaker, pause):
+    def pcm(self, text, speaker, pause, pron=None):
         """Фраза → 16-битный PCM 48 кГц моно (bytes), с паузой в конце."""
-        cleaned = clean_for_speech(text)
+        cleaned = clean_for_speech(text, pron=pron)
         pieces = []
         if has_letters(cleaned):
             gap = np.zeros(int(SAMPLE_RATE * 0.12), dtype=np.float32)
@@ -497,8 +503,8 @@ class Synthesizer:
     def fmt(self, want):
         return "opus" if want == "opus" and self.encoder is not None and self.encoder.ok else "wav"
 
-    def _key(self, text, speaker, pause, fmt):
-        return (fmt, speaker, text, round(pause, 2), en_translit.version)
+    def _key(self, text, speaker, pause, fmt, pron=None):
+        return (fmt, speaker, text, round(pause, 2), en_translit.version, pron.key if pron else "")
 
     def _cached(self, key):
         with self.cache_lock:
@@ -552,21 +558,21 @@ class Synthesizer:
         else:
             fut.set_exception(error)
 
-    def _model(self, text, speaker, pause, turn):
+    def _model(self, text, speaker, pause, turn, pron=None):
         """Модель — строго по очереди (FairQueue), одна фраза за раз."""
         self.queue.acquire(turn)
         try:
-            return self.pcm(text, speaker, pause)
+            return self.pcm(text, speaker, pause, pron)
         finally:
             self.queue.release()
 
-    def _start(self, key, text, speaker, pause, fmt, turn):
+    def _start(self, key, text, speaker, pause, fmt, turn, pron=None):
         """Взять фразу: future с готовыми байтами. Сжатие идёт в фоне, модель тем временем считает следующую."""
         fut, mine = self._claim(key)
         if not mine:
             return fut
         try:
-            pcm = self._model(text, speaker, pause, turn)
+            pcm = self._model(text, speaker, pause, turn, pron)
         except BaseException as e:  # noqa: BLE001 — и ClientGone: ждущие эту фразу посчитают её сами
             self._finish(key, fut, error=e)
             if isinstance(e, ClientGone):
@@ -580,7 +586,7 @@ class Synthesizer:
         enc.add_done_callback(done)
         return fut
 
-    def _result(self, fut, key, text, speaker, pause, fmt, turn):
+    def _result(self, fut, key, text, speaker, pause, fmt, turn, pron=None):
         """Дождаться фразы. Если её считали для клиента, который ушёл, — посчитать самим."""
         for _ in range(3):
             try:
@@ -588,23 +594,23 @@ class Synthesizer:
             except ClientGone:
                 if turn.gone():
                     raise
-                fut = self._start(key, text, speaker, pause, fmt, turn)
+                fut = self._start(key, text, speaker, pause, fmt, turn, pron)
         return fut.result()
 
-    def audio(self, text, speaker, pause, want="wav", turn=None):
-        """Одна фраза. Возвращает (bytes, формат)."""
+    def audio(self, text, speaker, pause, want="wav", turn=None, pron=None):
+        """Одна фраза. Возвращает (bytes, формат). pron — личные правила устройства (ru_rules)."""
         turn = turn or Turn(live=True)
         speaker = self.speaker(speaker)
         pause = max(0.0, min(float(pause or 0), 3.0))
         fmt = self.fmt(want)
-        key = self._key(text, speaker, pause, fmt)
-        fut = self._start(key, text, speaker, pause, fmt, turn)
-        return self._result(fut, key, text, speaker, pause, fmt, turn), fmt
+        key = self._key(text, speaker, pause, fmt, pron)
+        fut = self._start(key, text, speaker, pause, fmt, turn, pron)
+        return self._result(fut, key, text, speaker, pause, fmt, turn, pron), fmt
 
     def wav(self, text, speaker, pause):
         return self.audio(text, speaker, pause, "wav")[0]
 
-    def batch(self, items, speaker, want="opus", turn=None):
+    def batch(self, items, speaker, want="opus", turn=None, pron=None):
         """Пакет фраз (предзагрузка книги). Каждая фраза встаёт в общую очередь отдельно — клиенты чередуются."""
         turn = turn or Turn()
         speaker = self.speaker(speaker)
@@ -617,10 +623,10 @@ class Synthesizer:
                 jobs.append(None)
                 continue
             pause = max(0.0, min(as_pause(it.get("pause", 0.2)), 3.0))
-            key = self._key(text, speaker, pause, fmt)
+            key = self._key(text, speaker, pause, fmt, pron)
             if turn.gone():
                 raise ClientGone()
-            jobs.append((self._start(key, text, speaker, pause, fmt, turn), key, text, pause))
+            jobs.append((self._start(key, text, speaker, pause, fmt, turn, pron), key, text, pause))
         out = []
         for j in jobs:
             if j is None:
@@ -628,7 +634,7 @@ class Synthesizer:
                 continue
             fut, key, text, pause = j
             try:
-                out.append(self._result(fut, key, text, speaker, pause, fmt, turn))
+                out.append(self._result(fut, key, text, speaker, pause, fmt, turn, pron))
             except ClientGone:
                 raise
             except Exception as e:  # noqa: BLE001 — фраза не удалась: в ответе длина 0, остальные целы
@@ -1102,6 +1108,10 @@ def make_handler(synth, catalog=None):
                 speaker = str(req.get("speaker") or DEFAULT_SPEAKER)
                 want = str(req.get("format") or "wav")
                 live = path == "/api/tts" or bool(req.get("live"))
+                try:
+                    pron = ru_rules.from_request(req)
+                except ru_rules.RuleError as e:
+                    raise BadRequest(str(e))
                 if path == "/api/tts_batch":
                     items = req.get("items") or []
                     if not isinstance(items, list) or len(items) > BATCH_MAX:
@@ -1114,9 +1124,9 @@ def make_handler(synth, catalog=None):
                 try:
                     t0 = time.time()
                     if path == "/api/tts_batch":
-                        parts, fmt = synth.batch(items, speaker, want, turn)
+                        parts, fmt = synth.batch(items, speaker, want, turn, pron)
                     else:
-                        data, fmt = synth.audio(text, speaker, as_pause(req.get("pause", 0.2)), want, turn)
+                        data, fmt = synth.audio(text, speaker, as_pause(req.get("pause", 0.2)), want, turn, pron)
                 finally:
                     synth.queue.leave(turn)
                 if path == "/api/tts_batch":

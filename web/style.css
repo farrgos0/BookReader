@@ -660,3 +660,37 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .sleep-btn.on { color: var(--accent); }
 .sleep-left { position: absolute; right: -2px; top: -2px; min-width: 18px; padding: 0 4px; height: 16px; border-radius: 8px;
   background: var(--accent); color: var(--accent-ink); font-size: 10.5px; font-weight: 700; line-height: 16px; text-align: center; }
+
+/* ---------- окно «Произношение» (pron.js) ---------- */
+.pr { display: flex; flex-direction: column; gap: 12px; }
+.pr-list { display: flex; flex-direction: column; gap: 8px; }
+.pr-empty, .pr-none { color: var(--muted); font-size: 13.5px; padding: 6px 2px; }
+.pr-rule { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
+.pr-line { display: flex; align-items: center; gap: 6px; }
+.pr-line input.pr-w, .pr-line input.pr-s {
+  flex: 1; min-width: 0; height: 38px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); font-size: 15px;
+}
+.pr-line input.pr-w { flex: 0.8; }
+.pr-line input.bad { border-color: #c0392b; }
+.pr-case { display: flex; align-items: center; gap: 3px; font-size: 13px; color: var(--muted); cursor: pointer; flex: none; }
+.pr-case input { accent-color: var(--accent); width: 16px; height: 16px; }
+.pr-eq { color: var(--muted); flex: none; }
+.pr-line .icon-btn { flex: none; width: 34px; height: 34px; font-size: 14px; }
+.pr-err { color: #c0392b; font-size: 12.5px; }
+.pr-scope summary { font-size: 13px; color: var(--muted); cursor: pointer; }
+.pr-opt, .pr-book { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 3px 0; cursor: pointer; }
+.pr-opt input, .pr-book input { accent-color: var(--accent); }
+.pr-books { max-height: 180px; overflow: auto; padding: 4px 0 0 22px; }
+.pr-sub { font-size: 12px; color: var(--muted); margin-top: 6px; font-weight: 600; }
+.pr-help { font-size: 13.5px; }
+.pr-help summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.pr-help ul { padding-left: 18px; margin: 8px 0 0; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
+.pr-io { display: flex; gap: 8px; }
+.pr-io .set-btn { flex: 1; }
+@media (max-width: 460px) {
+  .pr-line { flex-wrap: wrap; }
+  .pr-line input.pr-w { flex: 1 1 0; }
+  .pr-line input.pr-s { flex: 1 1 100%; order: 5; }
+  .pr-eq { display: none; }
+}
