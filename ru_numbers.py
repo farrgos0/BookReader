@@ -725,7 +725,7 @@ RANK_LETTERS = {"S": "эс", "A": "эй", "B": "би", "C": "си", "D": "ди",
                 # те же буквы кириллицей — авторы часто пишут «С-ранг», «А-ранг»
                 "А": "эй", "В": "би", "Б": "би", "С": "си", "Д": "ди", "Е": "и", "Ф": "эф"}
 _RANK_TOKEN = r"(?:SSS|SS|S|[ABCDEF]|[АВБСДЕФ])(?:\+{1,3}|-(?![А-Яа-яЁё]))?"
-_RANK_WORD = r"(?:ранг|ранговы|класс)[а-яё]*"
+_RANK_WORD = r"(?:ранг|ранговы|класс|тир)[а-яё]*|(?:[Tt]ier|[Rr]ank|[Cc]lass)(?:s)?(?![A-Za-z])"
 
 
 def rank_words(token):
@@ -756,8 +756,70 @@ def ranks(text):
         return f"{rank_words(tok)}{'-' if '-' in sep else ' '}{m.group(3)}"
     text = re.sub(rf"(?<![\w+-])({_RANK_TOKEN})(\s?-\s?|\s)({_RANK_WORD})", before, text)
     # ранга S, ранг A+, Ранг: SS, класса B
-    return re.sub(rf"(?<![\w])((?:[Рр]анг|[Кк]ласс)[а-яё]*:?\s+)({_RANK_TOKEN})(?![\w+])",
+    return re.sub(rf"(?<![\w])((?:[Рр]анг|[Кк]ласс|[Тт]ир)[а-яё]*:?\s+|(?:[Tt]ier|[Rr]ank|[Cc]lass):?\s+)({_RANK_TOKEN})(?![\w+])",
                   lambda m: m.group(1) + rank_words(m.group(2)), text)
+
+
+# ---------- «мин.» и «макс.»: минуты, минимум, министерство — или мины ----------
+
+_MINE_CONTEXT = re.compile(r"(?i)сап[её]р|разминир|обезвре|минн[а-яё]+|\bмин[аыуое]й?\b|миной|растяжк|фугас|"
+                           r"противотанков|противопехотн|подорва|взрывател|миноиска|заминир")
+_MINISTRY = ("обороны", "финансов", "юстиции", "внутренних", "иностранных", "здравоохранения", "путей", "связи",
+             "торговли", "культуры", "образования", "просвещения", "промышленности", "сельского", "транспорта")
+_ADJ_END = ("ый", "ий", "ой", "ая", "яя", "ое", "ее", "ые", "ие", "ого", "его", "ому", "ему", "ым", "им", "ую",
+            "юю", "ых", "их", "ыми", "ими")
+
+
+def _min_max(text):
+    """«через 1 мин.» → «через одну минуту»; «мин. допустимая норма» → «минимально допустимая норма»;
+    «мин. значение» → «минимальное значение»; «мин. обороны» → «министерство обороны»; «мин.: 5» → «минимум: 5».
+    Рядом про мины (сапёр, разминирование, минное поле…) — «мин» остаётся мин."""
+    if not re.search(r"(?i)(?<![\w])(?:мин|макс)\.?", text):
+        return text
+    mines = bool(_MINE_CONTEXT.search(text))
+
+    def minutes(m):
+        if mines:
+            return m.group(0)
+        n = int(m.group(1))
+        prev = _prev_word(text, m.start())
+        if prev in ("через", "за", "на", "спустя"):
+            case = "acc"
+        elif prev in GEN_PREPS or prev in ("с", "со"):
+            case = "gen"
+        else:
+            case = "nom"
+        if case == "gen":
+            noun = "минуты" if n % 10 == 1 and n % 100 != 11 else "минут"
+        else:
+            noun = plural(n, "минуту" if case == "acc" else "минута", "минуты", "минут")
+        return f"{cardinal(n, 'f', case)} {noun}"
+    text = re.sub(r"(?<![\d.,])(\d{1,4})\s*мин(?:\.|(?![\w]))", minutes, text)
+
+    def word(m):
+        base, rest = m.group(1), text[m.end():]
+        low = base.lower()
+        full = {"мин": ("минимальн", "минимально", "минимум"), "макс": ("максимальн", "максимально", "максимум")}[low]
+        cap = (lambda w: w.capitalize()) if base[0].isupper() else (lambda w: w)
+        if low == "мин" and mines:
+            return m.group(0)
+        if low == "макс" and base[0].isupper() and not re.match(r"\s*[:\d]|\s*[а-яё]", rest):
+            return m.group(0)   # имя «Макс.» в конце предложения
+        nxt = re.match(r"\s*([А-Яа-яЁё]+)(?:\s+([А-Яа-яЁё]+))?", rest)
+        if low == "мин" and nxt and nxt.group(1).lower() in _MINISTRY:
+            return cap("министерство")
+        if nxt:
+            w1, w2 = nxt.group(1).lower(), (nxt.group(2) or "").lower()
+            noun_ie = w1.endswith(("ние", "тие", "вие", "бие", "дие", "лие", "рие", "сие"))   # значение, развитие
+            if w1.endswith(_ADJ_END) and not noun_ie and w2:
+                return cap(full[1])               # «мин. допустимая норма» → «минимально допустимая»
+            ending = ("ая" if w1.endswith(("а", "я", "ость", "есть", "сть", "знь", "чь", "шь", "щь", "жь", "вь", "бь"))
+                      else "ое" if w1.endswith(("о", "е")) else "ые" if w1.endswith(("ы", "и")) else "ый")
+            if w1.endswith(_ADJ_END) and not noun_ie:
+                return cap(full[2])
+            return cap(full[0] + ending)          # «мин. значение» → «минимальное значение»
+        return cap(full[2])                       # «мин.: 5», «мин. 5» → «минимум»
+    return re.sub(r"(?<![\w.])([Мм]ин|[Мм]акс)\.(?![\w])", word, text)
 
 
 def abbreviations(text):
@@ -765,6 +827,7 @@ def abbreviations(text):
     for pat, rep in _ABBR:
         text = re.sub(pat, rep, text)
     text = _level_abbr(text)
+    text = _min_max(text)
     text = ranks(text)
     text = ru_names.initials(text)
     text = dotted_words(text)
