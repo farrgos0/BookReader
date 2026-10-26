@@ -41,6 +41,10 @@ YO_NAMES = set()
 for _b, _k in _YO_NAMES_BASE.items():
     YO_NAMES |= _forms(_b, _k)
 
+# мужские фамилии на -ёв (Королёв, Горбачёв, Соловьёв): «ё» в суффиксе обычно правильная.
+# Женские «-ёва/-ёвой» не берём: «Королёва» = «королева» по написанию.
+_YO_SURNAME = re.compile(r"ёв(?:у|ым|е|ых|ыми)?$")
+
 _WORD = re.compile(r"[А-Яа-яЁё+]+")
 _SENT_END = re.compile(r"[.!?…]+[»\"')\]]*$")
 
@@ -104,23 +108,32 @@ def prepare(text, accentor, protect=()):
         if _is_capitalized(w) and i not in protect:
             src[i] = _lower_first(tok)
             lowered.add(i)
-    joined = "".join(p if k % 2 else src[k // 2] for k, p in enumerate(parts))
-    acc = accentor(joined, put_stress=True, put_stress_homo=True, put_yo=True, put_yo_homo=True,
-                   stress_single_vowel=True)
+    kw = dict(put_stress=True, put_stress_homo=True, put_yo=True, put_yo_homo=True, stress_single_vowel=True)
+    acc = accentor(text, **kw)                       # как есть — ударения омографов по нему
     acc_parts = re.split(r"(\s+)", acc)
     acc_tokens = acc_parts[0::2]
     if len(acc_tokens) != len(tokens):
         return acc   # разбивка не совпала — отдаём как есть, без поправок
+    low_tokens = acc_tokens
+    if lowered:
+        joined = "".join(p if k % 2 else src[k // 2] for k, p in enumerate(parts))
+        low_tokens = re.split(r"(\s+)", accentor(joined, **kw))[0::2]
+        if len(low_tokens) != len(tokens):
+            low_tokens, lowered = acc_tokens, set()
     out = []
     for i, (orig, a) in enumerate(zip(tokens, acc_tokens)):
         if i in protect:
             out.append(orig)
             continue
         if i in lowered:
-            a = _upper_first(a)
+            # начало предложения: ударение — как Silero решила сама; но если «ё» появилась только из-за
+            # заглавной буквы («Королева» → «Королёва»), берём разбор того же слова со строчной
+            low = _upper_first(low_tokens[i])
+            if "ё" in a.lower() and "ё" not in low.lower() and "ё" not in orig.lower():
+                a = low
         elif _is_capitalized(_letters(orig)):
             bare = _letters(a).replace("+", "").lower()
-            if bare not in YO_NAMES:
+            if bare not in YO_NAMES and not _YO_SURNAME.search(bare):
                 a = _drop_new_yo(orig, a)
         out.append(a)
     seps = acc_parts[1::2]
