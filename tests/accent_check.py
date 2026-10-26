@@ -6,7 +6,7 @@
 Показывает три шага модели Silero v5_ru:
   1) омографы по контексту (нейросеть смотрит на всё предложение: «королева» → корол+ева / корол+ёва);
   2) остальные слова по отдельности (словарь исключений и модель без контекста: «селен» → сел+ён);
-  3) итог — что реально уходит в синтез.
+  3) итог самой Silero и итог BookReader (ru_yo.py: имена без лишней «ё») — он и уходит в синтез.
 """
 import contextlib
 import io
@@ -31,8 +31,9 @@ def main(argv):
         argv = argv[:i] + argv[i + 2:]
     phrases += argv
     if not phrases:
-        phrases = ["Королева вошла в зал.", "Королева Мария вошла в зал.", "Мы видели Королеву.",
-                   "Селен сказал.", "У Селена был меч.", "Замок на двери. Замок на горе."]
+        phrases = ["Королева вошла в зал.", "И тут Королева вошла в зал.", "Мы видели Королеву.",
+                   "Селен сказал.", "Сказал Селен.", "У Селена был меч.", "Пришёл Петр с Семеном.",
+                   "Всё было хорошо, но все ушли.", "Замок на двери. Замок на горе."]
     with contextlib.redirect_stdout(io.StringIO()):
         import server
         model = server.load_silero()
@@ -45,8 +46,10 @@ def main(argv):
             homo = acc.homosolver(p, put_stress=True, put_yo=True) if hasattr(acc, "homosolver") else p
             full = acc(p, put_stress=True, put_stress_homo=True, put_yo=True, put_yo_homo=True)
             no_yo = acc(p, put_stress=True, put_stress_homo=True, put_yo=False, put_yo_homo=False)
-            lines += [f"«{p}»", f"   по контексту:   {homo}", f"   итог:           {full}",
-                      f"   без авто-«ё»:   {no_yo}", ""]
+            import ru_yo
+            ours = ru_yo.prepare(p, acc)
+            lines += [f"«{p}»", f"   по контексту:   {homo}", f"   Silero сама:    {full}",
+                      f"   без авто-«ё»:   {no_yo}", f"   BookReader:     {ours}   ← это уходит в синтез", ""]
     text = "\n".join(lines)
     if out_path:
         with open(out_path, "w", encoding="utf-8-sig") as f:

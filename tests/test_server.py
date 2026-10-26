@@ -64,6 +64,25 @@ class NormalizerCases(unittest.TestCase):
         self.assertIn("двенадцатое мая", server.clean_for_speech("05/12/1987", {"date_order": "mdy"}))
 
 
+class Yo(unittest.TestCase):
+    """ru_yo: «ё» Silero в именах убираем, начало предложения разбираем со строчной (поддельный accentor)."""
+
+    @staticmethod
+    def fake(text, **kw):
+        table = {"Королева": "Корол+ёва", "королева": "корол+ева", "Селен": "Сел+ён", "селен": "сел+ён",
+                 "Петр": "П+ётр", "вошла": "вошл+а", "Всё": "Вс+ё", "все": "вс+е"}
+        return "".join(table.get(w, w) for w in re.split(r"(\s+|[.,!?])", text))
+
+    def test_names(self):
+        import ru_yo
+        p = lambda t: ru_yo.prepare(t, self.fake)
+        self.assertEqual(p("Королева вошла."), "Корол+ева вошл+а.")       # начало предложения — как слово
+        self.assertEqual(p("И тут Королева вошла."), "И тут Корол+ева вошл+а.")  # имя — без новой «ё»
+        self.assertEqual(p("Сказал Селен."), "Сказал Сел+ен.")
+        self.assertEqual(p("Пришёл Петр."), "Пришёл П+ётр.")              # Пётр — «ё» правильная
+        self.assertEqual(p("— Королева, — сказал он."), "— Корол+ева, — сказал он.")
+
+
 class BrokenFb2(unittest.TestCase):
     """Битый FB2 из конвертеров: абзацы вокруг строк таблицы, незакрытые теги — глава не теряется."""
 

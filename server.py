@@ -80,6 +80,7 @@ SPEAKER_NAMES = {
 
 import en_translit
 import ru_numbers
+import ru_yo
 
 ENGLISH = True  # --no-english выключает транслитерацию
 
@@ -221,6 +222,12 @@ class SileroEngine:
             self.extra["put_accent"] = True
         if "put_yo" in params:
             self.extra["put_yo"] = True
+        # своя расстановка ударений и «ё» (ru_yo.py): Silero ошибается в именах; готовый текст — без авторасстановки
+        self.accentor = getattr(model, "accentor", None) if all(
+            k in params for k in ("put_accent", "put_yo", "put_stress_homo", "put_yo_homo")) else None
+        self.no_auto = {"put_accent": False, "put_yo": False, "put_stress_homo": False, "put_yo_homo": False}
+        if self.accentor is None:
+            print("Ударения и «ё»: расставляет сама Silero (в этой версии модели нет accentor)")
         if device == "cuda":
             try:
                 name = torch.cuda.get_device_name(0)
@@ -233,12 +240,26 @@ class SileroEngine:
                 pass
         print(f"Готово. Устройство: {device}. Голоса: {', '.join(self.speakers)}")
 
+    def accented(self, text):
+        """Текст с «+» и «ё» по правилам BookReader или None (тогда расставит сама Silero)."""
+        if self.accentor is None:
+            return None
+        try:
+            return ru_yo.prepare(text, self.accentor)
+        except Exception as e:  # noqa: BLE001 — не мешаем синтезу
+            print("Ударения: ошибка на тексте", repr(text[:60]), repr(e))
+            return None
+
     def synth(self, text, speaker):
         with self.lock, self.torch.inference_mode():
             try:
-                audio = self.model.apply_tts(
-                    text=text, speaker=speaker, sample_rate=SAMPLE_RATE, **self.extra
-                )
+                acc = self.accented(text)
+                if acc is not None:
+                    audio = self.model.apply_tts(text=acc, speaker=speaker, sample_rate=SAMPLE_RATE, **self.no_auto)
+                else:
+                    audio = self.model.apply_tts(
+                        text=text, speaker=speaker, sample_rate=SAMPLE_RATE, **self.extra
+                    )
             except Exception:
                 # иногда модель спотыкается о символы — пробуем только буквы и пунктуацию
                 simple = re.sub(r"[^А-Яа-яЁё0-9\s.,!?—\-]", " ", text)
