@@ -127,11 +127,11 @@ def prepare(text, accentor, protect=()):
             out.append(orig)
             continue
         if i in lowered:
-            # начало предложения: ударение — как Silero решила сама; но если «ё» появилась только из-за
-            # заглавной буквы («Королева» → «Королёва»), берём разбор того же слова со строчной
+            # начало предложения: ударение — как Silero решила сама; а если с заглавной и со строчной
+            # «ё» разная — верим строчной: заглавная сбивает Silero в обе стороны
             low = _upper_first(low_tokens[i])
-            if "ё" in a.lower() and "ё" not in low.lower() and "ё" not in orig.lower():
-                a = low
+            if "ё" not in orig.lower() and ("ё" in a.lower()) != ("ё" in low.lower()):
+                a = low   # «ё» решаем по слову со строчной: «Королёва» → «Королева», «Пчелы!» → «Пчёлы!»
         elif _is_capitalized(_letters(orig)):
             bare = _letters(a).replace("+", "").lower()
             if bare not in YO_NAMES and not _YO_SURNAME.search(bare):
