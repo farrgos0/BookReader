@@ -336,7 +336,7 @@ $include = @(   # пути через «/» — работает и в Windows
     "data/third_party/nemo_ru/currency_singular.tsv", "data/third_party/nemo_ru/currency_plural.tsv",
     "data/third_party/nemo_ru/months_abbr.tsv", "data/third_party/nemo_ru/LICENSE", "data/third_party/nemo_ru/README.md",
     "installer/install.ps1", "installer/uninstall.ps1", "installer/update.ps1", "installer/launcher.cs",
-    "tests/test_server.py", "tests/normalizer_cases.py", "tests/normalizer_cases.tsv", "tests/accent_check.py", "tests/yo_phrases.txt",
+    "tests/test_server.py", "tests/normalizer_cases.py", "tests/normalizer_cases.tsv", "tests/accent_check.py", "tests/yo_phrases.txt", "tests/yo_phrases_2.txt",
     "catalog/ПРОЧТИ.txt"
 )
 $files = New-Object System.Collections.Generic.List[string]
