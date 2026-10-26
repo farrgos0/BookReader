@@ -719,11 +719,53 @@ def dotted_words(text):
     return pat.sub(repl, text)
 
 
+# ---------- ранги из ранобэ: S-ранг, ранга A, SSS-класс, A+ ----------
+
+RANK_LETTERS = {"S": "эс", "A": "эй", "B": "би", "C": "си", "D": "ди", "E": "и", "F": "эф",
+                # те же буквы кириллицей — авторы часто пишут «С-ранг», «А-ранг»
+                "А": "эй", "В": "би", "Б": "би", "С": "си", "Д": "ди", "Е": "и", "Ф": "эф"}
+_RANK_TOKEN = r"(?:SSS|SS|S|[ABCDEF]|[АВБСДЕФ])(?:\+{1,3}|-(?![А-Яа-яЁё]))?"
+_RANK_WORD = r"(?:ранг|ранговы|класс)[а-яё]*"
+
+
+def rank_words(token):
+    """«SSS» → «трипл эс», «A+» → «эй плюс», «S++» → «эс плюс плюс»."""
+    m = re.fullmatch(r"(SSS|SS|S|.)(\++|-)?", token)
+    base, mod = m.group(1), m.group(2) or ""
+    if base == "SSS":
+        word = "трипл эс"
+    elif base == "SS":
+        word = "дабл эс"
+    else:
+        word = RANK_LETTERS.get(base, base)
+    if mod.startswith("+"):
+        word += " плюс" * len(mod)
+    elif mod == "-":
+        word += " минус"
+    return word
+
+
+def ranks(text):
+    """Буква ранга рядом со словом «ранг» / «класс»: «S-ранг» → «эс-ранг», «ранга C» → «ранга си»
+    (а не римское «сто»), «Ранг: SS» → «ранг: дабл эс». Без такого слова буквы не трогаем."""
+    # S-ранг, SSS-ранговый, A+ ранга, С-класс
+    def before(m):
+        tok, sep = m.group(1), m.group(2)
+        if re.match(r"[АВБСДЕФ]", tok) and "-" not in sep:
+            return m.group(0)   # кириллица через пробел — это предлог или союз: «В ранге», «С рангом», «А ранг…»
+        return f"{rank_words(tok)}{'-' if '-' in sep else ' '}{m.group(3)}"
+    text = re.sub(rf"(?<![\w+-])({_RANK_TOKEN})(\s?-\s?|\s)({_RANK_WORD})", before, text)
+    # ранга S, ранг A+, Ранг: SS, класса B
+    return re.sub(rf"(?<![\w])((?:[Рр]анг|[Кк]ласс)[а-яё]*:?\s+)({_RANK_TOKEN})(?![\w+])",
+                  lambda m: m.group(1) + rank_words(m.group(2)), text)
+
+
 def abbreviations(text):
     """«т. е.» → «то есть», «стр. 5» → «страница 5», «спс» → «спасибо». Вызывать ДО normalize()."""
     for pat, rep in _ABBR:
         text = re.sub(pat, rep, text)
     text = _level_abbr(text)
+    text = ranks(text)
     text = ru_names.initials(text)
     text = dotted_words(text)
     text = re.sub(r"(?<![\w])(" + "|".join(ACRONYMS) + r")(?![\w])", lambda m: ACRONYMS[m.group(1)], text)
