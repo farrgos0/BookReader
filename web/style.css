@@ -819,3 +819,6 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .sp-opt input { accent-color: var(--accent); width: 20px; height: 20px; flex: none; margin: 1px 0 0; }
 .sp-opt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 .sp-opt.off { opacity: .5; }
+.sp-opt.sub { margin: -4px 0 0 26px; }
+.sp-opt.danger b { color: #c0392b; }
+.sp-list { margin: 6px 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }

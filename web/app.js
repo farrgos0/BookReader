@@ -27,7 +27,7 @@ window.addEventListener("error", (e) => {
     warn: $("serverWarn"), warnText: $("warnText"), warnOffline: $("warnOffline"), warnClose: $("warnClose"),
     setServer: $("setServer"), toast: $("toast"),
     lib: $("lib"), btnLib: $("btnLib"), libClose: $("libClose"), libList: $("libList"), libCount: $("libCount"),
-    libSearch: $("libSearch"), libSort: $("libSort"), libFiles: $("libFiles"), libUsage: $("libUsage"), libClear: $("libClear"),
+    libSearch: $("libSearch"), libSort: $("libSort"), libFiles: $("libFiles"), libUsage: $("libUsage"),
     recent: $("recent"), recentList: $("recentList"),
     main: $("main"), pager: $("pager"), pagePrev: $("pagePrev"), pageNext: $("pageNext"), pageNum: $("pageNum"),
     pageBack: $("pageBack"), pageFwd: $("pageFwd"),
@@ -1543,13 +1543,11 @@ window.addEventListener("error", (e) => {
       try { audioBytes = await Native.Audio.bytes(); } catch (_) {}
       el.libUsage.textContent = libCache.length ? `Книги: ${fmtSize(total)}` + (audioBytes ? ` · озвучка: ${fmtSize(audioBytes)}` : "") + " · на этом устройстве" : "";
       el.libUsage.title = "Книги лежат в памяти приложения (SQLite + файлы) и никуда не синхронизируются.";
-      el.libClear.hidden = !libCache.length;
       return;
     }
     el.libUsage.title = (est && est.quota ? `Лимит браузера для этой читалки: ${fmtSize(est.quota)}, занято всего: ${fmtSize(est.usage)}.\n` : "") +
       (persisted ? "Хранилище защищено: браузер не удалит книги сам при нехватке места на диске."
                  : "Хранилище не защищено: при нехватке места на диске браузер может очистить данные сайта.");
-    el.libClear.hidden = !libCache.length;
   }
 
   el.libList.addEventListener("click", async (e) => {
@@ -1798,19 +1796,6 @@ window.addEventListener("error", (e) => {
   }
 
   el.libFiles.onchange = () => { if (el.libFiles.files.length) addFiles(el.libFiles.files); el.libFiles.value = ""; };
-  el.libClear.onclick = async () => {
-    if (el.libClear.dataset.confirm !== "1") {
-      el.libClear.dataset.confirm = "1";
-      el.libClear.textContent = "Точно удалить все книги?";
-      setTimeout(() => { el.libClear.dataset.confirm = ""; el.libClear.textContent = "Очистить библиотеку"; }, 4000);
-      return;
-    }
-    await Library.clear();
-    el.libClear.dataset.confirm = ""; el.libClear.textContent = "Очистить библиотеку";
-    closeBook();
-    await refreshLibrary();
-    toast("Библиотека очищена");
-  };
   el.recentList.addEventListener("click", (e) => {
     const b = e.target.closest(".recent-item");
     if (b) openFromLibrary(b.dataset.id);
@@ -2463,40 +2448,75 @@ window.addEventListener("error", (e) => {
     pronApplied();
   };
 
-  // «Освободить место» (приложение): скачанная озвучка, которая больше не нужна
+  // «Освободить место» (настройки): ненужная скачанная озвучка (приложение) и — отдельным подпунктом — вся библиотека.
+  // Всё необратимое — только после второго окна со списком того, что удалится.
   $("btnSpace").onclick = async () => {
-    if (!Native || !Native.Audio.cleanInfo) return toast("Обновите приложение");
-    let info;
-    try { info = await Native.Audio.cleanInfo(); } catch (e) { return toast("Не получилось посчитать: " + e.message, 4000); }
+    const audio = !!(Native && Native.Audio.cleanInfo);
+    if (Native && !audio) return toast("Обновите приложение");
+    let info = {};
+    if (audio) {
+      try { info = await Native.Audio.cleanInfo(); } catch (e) { return toast("Не получилось посчитать: " + e.message, 4000); }
+    }
+    const books = libCache.length;
     const n = (k, a, b, c) => `${k.toLocaleString("ru")} ${plural(k, a, b, c)}`;
-    const opt = (id, on, title, size, hint, disabled) => `<label class="sp-opt${disabled ? " off" : ""}"><input type="checkbox" id="${id}"${on && !disabled ? " checked" : ""}${disabled ? " disabled" : ""}>
+    const opt = (id, on, title, size, hint, disabled, cls = "") => `<label class="sp-opt${cls}${disabled ? " off" : ""}"><input type="checkbox" id="${id}"${on && !disabled ? " checked" : ""}${disabled ? " disabled" : ""}>
       <span><b>${title}</b> — ${size}${hint ? `<small>${hint}</small>` : ""}</span></label>`;
     const html = `<div class="sp">
-      <p class="pr-hint">Всего скачанной озвучки: <b>${fmtSize(info.totalBytes || 0)}</b>. Книги и прогресс чтения не удаляются.</p>
+      ${audio ? `<p class="pr-hint">Всего скачанной озвучки: <b>${fmtSize(info.totalBytes || 0)}</b>.</p>
       ${opt("spOrphans", true, "Озвучка книг, которых нет в библиотеке", info.orphanBooks ? `${n(info.orphanBooks, "книга", "книги", "книг")}, ${fmtSize(info.orphanBytes)}` : "нет", "", !info.orphanBooks)}
       ${opt("spTemp", true, "Недописанные и временные файлы", info.tempBytes ? fmtSize(info.tempBytes) : "нет", "остались после обрывов связи", !info.tempBytes)}
       ${opt("spOutdated", false, "Старый вариант фраз, ожидающих обновления", info.outdatedPhrases ? `${n(info.outdatedPhrases, "фраза", "фразы", "фраз")}, ${fmtSize(info.outdatedBytes)}` : "нет",
         "в том числе скачанных до 1.2.0. Эти фразы будут звучать с сервера — уже с текущими правилами; без сервера их не будет", !info.outdatedPhrases)}
-      ${opt("spAll", false, "Вся скачанная озвучка", fmtSize(info.totalBytes || 0), "книги останутся, озвучку можно скачать заново" + (info.busy ? "; идущие загрузки будут остановлены" : ""), !info.totalBytes)}
-      ${info.busy ? '<p class="pr-hint">Озвучка, которая сейчас загружается, не удаляется (кроме «Вся скачанная озвучка»).</p>' : ""}
+      ${opt("spAll", false, "Вся скачанная озвучка", fmtSize(info.totalBytes || 0), "книги останутся, озвучку можно скачать заново" + (info.busy ? "; идущие загрузки будут остановлены" : ""), !info.totalBytes)}` : ""}
+      ${opt("spLib", false, "Вся библиотека", books ? n(books, "книга", "книги", "книг") : "пусто",
+        "книги, прогресс чтения" + (audio ? " и вся их озвучка" : "") + ". Удаляются с этого устройства безвозвратно", !books, audio ? " sub danger" : " danger")}
+      ${audio && info.busy ? '<p class="pr-hint">Озвучка, которая сейчас загружается, не удаляется (кроме «Вся скачанная озвучка» и «Вся библиотека»).</p>' : ""}
     </div>`;
     const go = ask("Освободить место", html, [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, value: 1 }]);
-    const body = askEl.body, all = body.querySelector("#spAll");
-    const sync = () => body.querySelectorAll("#spOrphans, #spTemp, #spOutdated").forEach((x) => {
-      x.closest(".sp-opt").classList.toggle("off", all.checked || x.dataset.none === "1");
-    });
-    body.querySelectorAll("#spOrphans, #spTemp, #spOutdated").forEach((x) => { if (x.disabled) x.dataset.none = "1"; });
-    all.onchange = sync;
-    const ok = await go;
-    if (!ok) return;
-    const val = (id) => { const x = body.querySelector("#" + id); return !!(x && x.checked && !x.disabled); };
-    const opts = { all: val("spAll"), orphans: val("spOrphans"), temp: val("spTemp"), outdated: val("spOutdated") };
-    if (!opts.all && !opts.orphans && !opts.temp && !opts.outdated) return toast("Ничего не отмечено");
+    const body = askEl.body;
+    const box = (id) => body.querySelector("#" + id);
+    const lib = box("spLib"), all = box("spAll");
+    const minor = ["spOrphans", "spTemp", "spOutdated"].map(box).filter(Boolean);
+    minor.forEach((x) => { if (x.disabled) x.dataset.none = "1"; });
+    const sync = () => {
+      // вся библиотека включает всю озвучку; вся озвучка включает остальные пункты
+      if (all && lib.checked) all.checked = true;
+      if (all) { all.disabled = lib.checked || !info.totalBytes; all.closest(".sp-opt").classList.toggle("off", all.disabled); }
+      minor.forEach((x) => x.closest(".sp-opt").classList.toggle("off", (all && all.checked) || x.dataset.none === "1"));
+    };
+    lib.onchange = sync;
+    if (all) all.onchange = sync;
+    if (!(await go)) return;
+    const val = (x) => !!(x && x.checked && (!x.disabled || x === all));
+    const opts = { library: val(lib), all: val(all), orphans: val(box("spOrphans")), temp: val(box("spTemp")), outdated: val(box("spOutdated")) };
+    if (!Object.values(opts).some(Boolean)) return toast("Ничего не отмечено");
+
+    // подтверждение: явно — что отмечено и что удалится безвозвратно
+    const items = [];
+    if (opts.library) items.push(`<li><b>Вся библиотека</b> — ${n(books, "книга", "книги", "книг")} вместе с прогрессом чтения${audio ? " и всей озвучкой" : ""}</li>`);
+    if (opts.all && !opts.library) items.push(`<li><b>Вся скачанная озвучка</b> — ${fmtSize(info.totalBytes || 0)}</li>`);
+    if (!opts.all) {
+      if (opts.orphans) items.push(`<li>Озвучка книг, которых нет в библиотеке — ${fmtSize(info.orphanBytes || 0)}</li>`);
+      if (opts.temp) items.push(`<li>Недописанные и временные файлы — ${fmtSize(info.tempBytes || 0)}</li>`);
+      if (opts.outdated) items.push(`<li>Старый вариант фраз, ожидающих обновления — ${n(info.outdatedPhrases || 0, "фраза", "фразы", "фраз")}</li>`);
+    }
+    const sure = await ask(opts.library || opts.all ? "Удалить безвозвратно?" : "Удалить?",
+      `<p>Отмечено к удалению:</p><ul class="sp-list">${items.join("")}</ul>
+       <p><b>Это удалится с устройства безвозвратно</b> — отменить нельзя.${opts.library ? " Книги можно будет добавить заново только из файлов или каталога." : ""}</p>`,
+      [{ label: "Отмена", value: null }, { label: "Удалить безвозвратно", primary: true, value: 1 }]);
+    if (!sure) return;
     try {
-      const r = await Native.Audio.clean(opts);
-      toast(`Освобождено: ${fmtSize((r && r.freed) || 0)}`, 3500);
+      if (opts.library) {
+        await Library.clear();          // в приложении вместе с книгами удаляется и вся озвучка
+        closeBook();
+        await refreshLibrary();
+        toast("Библиотека очищена");
+      } else {
+        const r = await Native.Audio.clean(opts);
+        toast(`Освобождено: ${fmtSize((r && r.freed) || 0)}`, 3500);
+      }
     } catch (e) { toast("Не получилось: " + e.message, 4000); }
-    await refreshAudio();
+    if (Native) await refreshAudio();
     renderUsage();
   };
 
