@@ -53,6 +53,8 @@ CATALOG_DIR = os.path.join(ROOT, "catalog")   # книги, которые кл�
 # Именно 127.0.0.1, а не localhost: библиотека читалки в браузере привязана к адресу страницы —
 # смена адреса «потеряла» бы книги пользователя.
 LOOPBACK = "127.0.0.1"
+DEFAULT_UPDATE_REPO = "farrgos0/BookReader"   # выпуски на GitHub: архив обновления сервера и APK (шаг 6)
+UPDATE_REPO = DEFAULT_UPDATE_REPO             # "update_repo" в server.json — своё
 
 VERSION = "1.1.1"
 SAMPLE_RATE = 48000
@@ -1044,6 +1046,8 @@ def make_handler(synth, catalog=None):
                     "catalog": catalog is not None,
                     "english": en_translit.status() if ENGLISH else "off",
                     "name": "BookReader", "version": VERSION, "fair_queue": True,
+                    # обновления (шаг 6): откуда брать и можно ли поставить отсюда (браузер на этом же ПК, Windows)
+                    "update_repo": UPDATE_REPO, "update_here": self.update_allowed(),
                 })
                 return
             super().do_GET()
@@ -1124,6 +1128,32 @@ def make_handler(synth, catalog=None):
             except (ConnectionError, BrokenPipeError):
                 pass  # клиент передумал — ничего страшного
 
+        def update_allowed(self):
+            """Ставить обновление можно только из браузера на этом же ПК и только на Windows (update.ps1)."""
+            return (os.name == "nt" and self.client_address[0] in ("127.0.0.1", "::1")
+                    and os.path.exists(os.path.join(paths.APP_DIR, "installer", "update.ps1")))
+
+        def start_update(self):
+            """POST /api/update/install — запустить update.ps1 (с GitHub, без вопросов) в отдельном окне.
+            Он сам остановит этот сервер, заменит файлы (при ошибке вернёт прежние) и запустит сервер снова.
+            Защита: только с этого ПК и только со своим заголовком — чужой сайт в браузере такой запрос
+            отправить не может (заголовок не разрешён для чужих страниц, см. Access-Control-Allow-Headers)."""
+            origin = self.headers.get("Origin") or ""
+            host = self.headers.get("Host") or ""
+            if not self.update_allowed() or self.headers.get("X-BookReader-Update") != "1" or (origin and urllib.parse.urlparse(origin).netloc != host):
+                self.send_json({"error": "обновление ставится только из браузера на компьютере с сервером"}, 403)
+                return
+            ps1 = os.path.join(paths.APP_DIR, "installer", "update.ps1")
+            cmd = f'title BookReader - обновление & powershell -NoProfile -ExecutionPolicy Bypass -File "{ps1}" -Online -Yes || pause'
+            try:
+                subprocess.Popen(["cmd.exe", "/c", cmd], cwd=paths.APP_DIR,
+                                 creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+            except OSError as e:
+                self.send_json({"error": f"не удалось запустить обновление: {e}"}, 500)
+                return
+            sys.stderr.write("запущено обновление сервера (update.ps1 -Online)\n")
+            self.send_json({"ok": True})
+
         def send_text_fp(self):
             """POST /api/text_fp {items: [текст фразы…], rules, opts} → {version, fps}: без озвучки, только отпечатки."""
             try:
@@ -1160,6 +1190,9 @@ def make_handler(synth, catalog=None):
             path = self.path.split("?")[0]
             if path == "/api/text_fp":
                 self.send_text_fp()
+                return
+            if path == "/api/update/install":
+                self.start_update()
                 return
             if path not in ("/api/tts", "/api/tts_batch"):
                 self.send_error(404)
@@ -1515,8 +1548,10 @@ def main():
         except Exception:  # noqa: BLE001
             pass
 
-    global ENGLISH, SERVER_NAME
+    global ENGLISH, SERVER_NAME, UPDATE_REPO
     ENGLISH = not args.no_english
+    repo = str(cfg.get("update_repo") or "").strip()
+    UPDATE_REPO = repo if re.fullmatch(r"[\w.-]+/[\w.-]+", repo) else DEFAULT_UPDATE_REPO
     SERVER_NAME = re.sub(r"\s+", " ", args.name).strip()[:60]
     if ENGLISH:
         en_translit.preload(background=True)

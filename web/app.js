@@ -2860,6 +2860,106 @@ window.addEventListener("error", (e) => {
     }
   }
 
+  // ---------- обновления (шаг 6): последний стабильный выпуск на GitHub ----------
+  // Проверка — при первом запуске за день и кнопкой в настройках. Запрос к GitHub делает этот браузер/приложение
+  // (GitHub видит только адрес); ничего, кроме номера версии, не отправляется. Сервер ставится только из браузера
+  // на ПК с сервером (update.ps1), приложение — скачиванием APK во внешнем браузере.
+  let serverMeta = null;          // { version, repo, here } — из /api/info
+  let appVer = null;
+  const verNum = (v) => (String(v || "").match(/\d+/g) || []).slice(0, 3).map(Number).concat([0, 0, 0]).slice(0, 3);
+  const isNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+  const today = () => new Date().toISOString().slice(0, 10);
+  async function fetchLatest(repo) {
+    const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
+    if (r.status === 404) return { version: "", none: true };
+    if (!r.ok) throw new Error(r.status === 403 ? "GitHub временно ограничил запросы — попробуйте позже" : "GitHub ответил " + r.status);
+    const j = await r.json();
+    const assets = j.assets || [];
+    const apk = assets.find((a) => /^BookReader-[\d.]+\.apk$/i.test(a.name));
+    return {
+      version: String(j.tag_name || "").replace(/^v/i, ""), notes: String(j.body || "").slice(0, 3000), url: j.html_url,
+      apk: apk ? apk.browser_download_url : null, apkSize: apk ? apk.size : 0,
+      server: assets.some((a) => /^BookReader_Server_v[\d.]+_update\.zip$/.test(a.name)),
+    };
+  }
+  async function checkUpdates(manual) {
+    if (Native && !appVer) appVer = await Native.appVersion();
+    const repo = (serverMeta && serverMeta.repo) || "farrgos0/BookReader";
+    if (!manual && store.get("updDay", "") === today()) return renderUpdates();
+    const btn = $("btnUpdCheck");
+    btn.disabled = true;
+    try {
+      const latest = await fetchLatest(repo);
+      store.set("updLatest", latest);
+      store.set("updDay", today());
+      store.set("updError", "");
+    } catch (e) {
+      store.set("updError", netMessage(e));
+      if (manual) toast("Не получилось проверить: " + netMessage(e), 4500);
+    } finally { btn.disabled = false; }
+    renderUpdates();
+    const l = store.get("updLatest", null);
+    if (l && l.version && (srvBehind(l) || appBehind(l))) {
+      if (manual || store.get("updToldFor", "") !== l.version) toast(`Доступна новая версия BookReader ${l.version} — Настройки → Обновления`, 5000);
+      store.set("updToldFor", l.version);
+    } else if (manual && l) toast("Установлены последние версии", 2500);
+  }
+  const srvBehind = (l) => !!(serverMeta && l.version && l.server && isNewer(l.version, serverMeta.version));
+  const appBehind = (l) => !!(Native && appVer && l.version && l.apk && isNewer(l.version, appVer));
+  function renderUpdates() {
+    const box = $("updBox");
+    const l = store.get("updLatest", null), err = store.get("updError", "");
+    const rows = [];
+    if (serverMeta) rows.push(`<div>Сервер: <b>${esc(serverMeta.version)}</b>${l && l.version ? (srvBehind(l) ? ` → доступна <b>${esc(l.version)}</b>` : " — последняя версия") : ""}</div>`);
+    else rows.push(`<div>Сервер: нет связи — версию не узнать</div>`);
+    if (Native) rows.push(`<div>Приложение: <b>${esc(appVer || "?")}</b>${l && l.version && appVer ? (appBehind(l) ? ` → доступна <b>${esc(l.version)}</b>` : " — последняя версия") : ""}</div>`);
+    if (Native && appVer && serverMeta && verNum(appVer).join(".") !== verNum(serverMeta.version).join(".")) {
+      const older = isNewer(serverMeta.version, appVer) ? "приложение" : "сервер";
+      rows.push(`<div class="upd-warn">Версии сервера и приложения разные — лучше обновить ${older}.</div>`);
+    }
+    if (l && srvBehind(l)) {
+      rows.push(serverMeta.here
+        ? `<button class="set-btn primary" id="btnUpdServer"><span>Установить обновление сервера ${esc(l.version)}</span></button>`
+        : `<div class="upd-hint">Обновление сервера ставится на ПК с сервером: откройте там читалку в браузере (Настройки → Обновления) или запустите update.bat.</div>`);
+    }
+    if (l && appBehind(l)) rows.push(`<button class="set-btn primary" id="btnUpdApp"><span>Скачать приложение ${esc(l.version)}${l.apkSize ? " (" + fmtSize(l.apkSize) + ")" : ""}</span></button>
+      <div class="upd-hint">Откроется браузер; после загрузки откройте файл — Android установит новую версию поверх старой (книги и настройки сохранятся).</div>`);
+    if (l && l.notes && (srvBehind(l) || appBehind(l))) rows.push(`<details class="upd-notes"><summary>Что нового в ${esc(l.version)}</summary><pre>${esc(l.notes)}</pre></details>`);
+    if (err) rows.push(`<div class="upd-hint">Последняя проверка не удалась: ${esc(err)}</div>`);
+    const day = store.get("updDay", "");
+    if (day) rows.push(`<div class="upd-hint">Проверено: ${esc(day.split("-").reverse().join("."))}. Проверка — раз в день при запуске и этой кнопкой.</div>`);
+    box.innerHTML = rows.join("");
+    const s = document.getElementById("btnUpdServer");   // кнопок может не быть — $() бы упал
+    if (s) s.onclick = installServerUpdate;
+    const a = document.getElementById("btnUpdApp");
+    if (a) a.onclick = async () => { try { await Native.openUrl(l.apk); } catch (e) { toast("Не получилось: " + e.message, 4000); } };
+  }
+  async function installServerUpdate() {
+    const l = store.get("updLatest", null);
+    const ok = await ask("Обновить сервер?", `<p>Будет установлена версия <b>${esc(l.version)}</b> с GitHub.</p>
+      <p>Откроется окно обновления; сервер остановится на минуту и запустится снова — чтение и загрузка озвучки прервутся.
+      Если что-то пойдёт не так, прежняя версия вернётся сама.</p>`,
+      [{ label: "Отмена", value: null }, { label: "Обновить", primary: true, value: 1 }]);
+    if (!ok) return;
+    try {
+      const r = await fetch("api/update/install", { method: "POST", headers: { "Content-Type": "application/json", "X-BookReader-Update": "1" }, body: "{}" });
+      if (!r.ok) throw new Error(await httpError(r, "update"));
+    } catch (e) { return toast("Не получилось запустить обновление: " + netMessage(e), 5000); }
+    const was = serverMeta.version;
+    ask("Обновляю сервер…", `<p>Идёт обновление до ${esc(l.version)} — следите за окном обновления на этом ПК.</p>
+      <p>Когда сервер запустится снова, страница перезагрузится сама.</p>`, [{ label: "Скрыть", value: null }]);
+    const t0 = Date.now();
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch("api/ping", { cache: "no-store" });
+        const p = await r.json();
+        if (p.version && p.version !== was) { clearInterval(poll); location.reload(); }
+      } catch (_) {}
+      if (Date.now() - t0 > 15 * 60000) clearInterval(poll);
+    }, 3000);
+  }
+  $("btnUpdCheck").onclick = () => checkUpdates(true);
+
   // ---------- сервер ----------
   async function loadServerInfo() {
     try {
@@ -2886,9 +2986,13 @@ window.addEventListener("error", (e) => {
       else if (info.offline) setWarn("unreachable", info.error);
       else setWarn(null);
       if (info.device === "fake") toast("Сервер в тестовом режиме (--fake): вместо голоса тон");
+      serverMeta = !info.offline && info.version ? { version: info.version, repo: info.update_repo, here: !!info.update_here } : null;
+      renderUpdates();
     } catch (e) {
       el.voice.innerHTML = '<option value="aidar">Айдар — мужской</option>';
       setWarn("down", netMessage(e));
+      serverMeta = null;
+      renderUpdates();
     }
   }
 
@@ -3299,6 +3403,7 @@ window.addEventListener("error", (e) => {
     if (Native) { try { onQueue(await Native.Audio.queue()); } catch (_) {} }
     const last = store.get("lastBook", null);
     if (last && libCache.some((m) => m.id === last)) await openFromLibrary(last);
+    checkUpdates(false).catch(() => {});   // первый запуск за день — проверить выпуски на GitHub (в фоне)
   }
   start();
 })();

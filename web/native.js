@@ -188,6 +188,9 @@
     getPref: (k) => call("GetPref", k),
     setPref: (k, v) => call("SetPref", k, v),
     hasServer: async () => (await call("HasServer")) === "true",
+    // обновления (шаг 6): версия приложения и открыть ссылку GitHub во внешнем браузере (скачать APK)
+    appVersion: async () => { try { return await call("AppVersion"); } catch (_) { return null; } },
+    openUrl: (url) => call("OpenUrl", url),
     exit: () => call("ExitApp"),
     log: (line) => call("WebLog", String(line).slice(0, 500)).catch(() => {}),   // в журнал «Для разработчиков» (старый клиент — метода нет, тихо)
     exportBook: (id) => jsonAsync("LibExportAsync", id),

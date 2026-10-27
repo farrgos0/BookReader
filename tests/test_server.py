@@ -541,6 +541,23 @@ class Api(unittest.TestCase):
                 self.assertEqual(st, 400)
                 self.error_text(d)
 
+    def test_update(self):
+        """Обновление из интерфейса: репозиторий в /api/info; поставить можно только с этого ПК на Windows."""
+        st, d = self.call("/api/info")
+        info = json.loads(d)
+        self.assertRegex(info["update_repo"], r"^[\w.-]+/[\w.-]+$")
+        self.assertEqual(info["update_here"], os.name == "nt")
+        st, d = self.call("/api/update/install", {})                 # без своего заголовка — отказ
+        self.assertEqual(st, 403)
+        self.error_text(d)
+        req = urllib.request.Request(self.url + "/api/update/install", data=b"{}", headers={
+            "Content-Type": "application/json", "X-BookReader-Update": "1", "Origin": "http://evil.example"})
+        try:
+            urllib.request.urlopen(req, timeout=10)
+            self.fail("чужой Origin должен получить отказ")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 403)
+
     def test_unknown_and_traversal(self):
         for path in ("/api/nope", "/../server.py", "/%2e%2e/server.py", "/..%5cserver.py", "/api/catalog/file/../x"):
             with self.subTest(path=path):
