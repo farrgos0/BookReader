@@ -2270,10 +2270,13 @@ window.addEventListener("error", (e) => {
 
   // ---------- окно-вопрос (соглашение, первый запуск, выбор голоса) ----------
   const askEl = { box: $("ask"), head: $("askHead"), body: $("askBody"), actions: $("askActions"), close: $("askClose") };
-  let askDone = null;
-  // buttons: [{ label, primary, value }] → промис со значением нажатой кнопки (null — закрыли)
-  function ask(title, html, buttons, { closable = true } = {}) {
+  let askDone = null, askGuard = null;
+  // buttons: [{ label, primary, value }] → промис со значением нажатой кнопки (null — закрыли).
+  // beforeClose — для окон с несохранёнными изменениями: вызывается при закрытии (✕, «Отмена», фон, «Назад»),
+  // промис false — окно остаётся открытым.
+  function ask(title, html, buttons, { closable = true, beforeClose = null } = {}) {
     if (askDone) askDone(null);
+    askGuard = beforeClose;
     askEl.head.textContent = title;
     askEl.body.innerHTML = html;
     askEl.body.scrollTop = 0;
@@ -2284,12 +2287,26 @@ window.addEventListener("error", (e) => {
     askEl.box.hidden = false;
     askEl.box.dataset.closable = closable ? "1" : "";
     return new Promise((res) => {
-      askDone = (v) => { askDone = null; askEl.box.hidden = true; res(v); };
-      askEl.actions.querySelectorAll("button").forEach((btn) => (btn.onclick = () => askDone(buttons[Number(btn.dataset.i)].value)));
+      askDone = (v) => { askDone = null; askGuard = null; askEl.box.hidden = true; res(v); };
+      askEl.actions.querySelectorAll("button").forEach((btn) => (btn.onclick = () => {
+        const v = buttons[Number(btn.dataset.i)].value;
+        if (v === null) askCancel(); else askDone(v);
+      }));
     });
   }
-  askEl.close.onclick = () => askDone && askDone(null);
-  askEl.box.addEventListener("click", (e) => { if (e.target === askEl.box && askEl.box.dataset.closable && askDone) askDone(null); });
+  // закрыть окно вопроса по желанию пользователя (✕, «Отмена», фон, Esc, «Назад») — с проверкой несохранённого
+  async function askCancel() {
+    if (!askDone) return;
+    const done = askDone;
+    if (askGuard) {
+      let ok = true;
+      try { ok = await askGuard(); } catch (_) {}
+      if (!ok || askDone !== done) return;
+    }
+    done(null);
+  }
+  askEl.close.onclick = () => askCancel();
+  askEl.box.addEventListener("click", (e) => { if (e.target === askEl.box && askEl.box.dataset.closable) askCancel(); });
 
   function licenseHtml(intro) {
     const L = window.LEGAL;
@@ -2436,7 +2453,7 @@ window.addEventListener("error", (e) => {
   function goBack() {
     if (hideKeyboard()) return true;
     if (!askEl.box.hidden) {
-      if (askEl.box.dataset.closable && askDone) askDone(null);
+      if (askEl.box.dataset.closable) askCancel();
       return true; // соглашение при первом запуске «Назад» не закрывает
     }
     if (!el.dl.hidden) { closeDl(); return true; }
@@ -3011,7 +3028,7 @@ window.addEventListener("error", (e) => {
     else if (e.code === "ArrowRight") { e.preventDefault(); jump(cur + 1, playing); }
     else if (e.code === "ArrowLeft") { e.preventDefault(); jump(cur - 1, playing); }
     else if (e.code === "KeyP") setViewMode(settings.view === "paged" ? "scroll" : "paged");
-    else if (e.code === "Escape") { if (!askEl.box.hidden) { if (askEl.box.dataset.closable && askDone) askDone(null); } else if (!el.dl.hidden) closeDl(); else closePanels(); }
+    else if (e.code === "Escape") { if (!askEl.box.hidden) { if (askEl.box.dataset.closable) askCancel(); } else if (!el.dl.hidden) closeDl(); else closePanels(); }
     else if (e.code === "KeyT") { if (!el.btnToc.disabled) togglePanel(el.toc); }
     else if (e.code === "KeyL") togglePanel(el.lib);
   });

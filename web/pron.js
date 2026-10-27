@@ -85,6 +85,9 @@
       </ul></details>`;
 
     const html = `<div class="pr">
+      <div class="pr-unsaved" id="prUnsaved" hidden><b>Изменения не сохранены.</b> Сохранить перед выходом?
+        <div class="pr-u-btns"><button class="set-btn pr-u-stay">Остаться</button><button class="set-btn danger pr-u-drop">Не сохранять</button>
+        <button class="set-btn primary pr-u-save">Сохранить</button></div></div>
       <button class="set-btn" id="prAdd">+ Добавить слово</button>
       <div class="pr-list" id="prList"></div>
       ${help}
@@ -92,7 +95,24 @@
         <input type="file" id="prFile" accept=".json,application/json" hidden></div>
     </div>`;
     const buttons = [{ label: "Отмена", value: null }, { label: "Сохранить", primary: true, value: "save" }];
-    const pr = ctx.ask("Произношение", html, buttons);
+    // несохранённые изменения: при закрытии (✕, «Отмена», «Назад» на телефоне) — напоминание
+    const snap = (w) => JSON.stringify([w.rules.filter((r) => r.w || r.s).map((r) => [r.w, !!r.c, r.s, r.books || null]), w.opts || {}]);
+    const initial = snap(work);
+    let unsaved = null;   // показано напоминание: функция-ответ
+    const beforeClose = () => {
+      if (snap(work) === initial) return true;
+      if (unsaved) return false;            // напоминание уже на экране
+      return new Promise((resolve) => {
+        const bar = body.querySelector("#prUnsaved");
+        bar.hidden = false;
+        bar.scrollIntoView({ block: "nearest" });
+        unsaved = (v) => { unsaved = null; bar.hidden = true; resolve(v); };
+        bar.querySelector(".pr-u-stay").onclick = () => unsaved(false);
+        bar.querySelector(".pr-u-drop").onclick = () => unsaved(true);
+        bar.querySelector(".pr-u-save").onclick = () => { unsaved(false); saveBtn.click(); };
+      });
+    };
+    const pr = ctx.ask("Произношение", html, buttons, { beforeClose });
     const body = ctx.askEl.body;
     const saveBtn = ctx.askEl.actions.querySelector('[data-i="1"]');
     const list = body.querySelector("#prList");
