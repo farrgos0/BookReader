@@ -2450,7 +2450,9 @@ window.addEventListener("error", (e) => {
 
   // «Освободить место» (настройки): ненужная скачанная озвучка (приложение) и — отдельным подпунктом — вся библиотека.
   // Всё необратимое — только после второго окна со списком того, что удалится.
-  $("btnSpace").onclick = async () => {
+  $("btnSpace").onclick = () => spaceDialog();
+  // preset — отметки, с которыми окно открыть снова («Отмена» в подтверждении возвращает сюда же)
+  async function spaceDialog(preset) {
     const audio = !!(Native && Native.Audio.cleanInfo);
     if (Native && !audio) return toast("Обновите приложение");
     let info = {};
@@ -2486,6 +2488,12 @@ window.addEventListener("error", (e) => {
     };
     lib.onchange = sync;
     if (all) all.onchange = sync;
+    if (preset) {
+      const ids = { library: "spLib", all: "spAll", orphans: "spOrphans", temp: "spTemp", outdated: "spOutdated" };
+      for (const [k, id] of Object.entries(ids)) { const x = box(id); if (x && !x.disabled) x.checked = !!preset[k]; }
+      if (all && preset.all) all.checked = true;
+      sync();
+    }
     if (!(await go)) return;
     const val = (x) => !!(x && x.checked && (!x.disabled || x === all));
     const opts = { library: val(lib), all: val(all), orphans: val(box("spOrphans")), temp: val(box("spTemp")), outdated: val(box("spOutdated")) };
@@ -2504,7 +2512,7 @@ window.addEventListener("error", (e) => {
       `<p>Отмечено к удалению:</p><ul class="sp-list">${items.join("")}</ul>
        <p><b>Это удалится с устройства безвозвратно</b> — отменить нельзя.${opts.library ? " Книги можно будет добавить заново только из файлов или каталога." : ""}</p>`,
       [{ label: "Отмена", value: null }, { label: "Удалить безвозвратно", primary: true, value: 1 }]);
-    if (!sure) return;
+    if (!sure) return spaceDialog(opts);   // передумали — обратно в окно очистки, отметки те же
     try {
       if (opts.library) {
         await Library.clear();          // в приложении вместе с книгами удаляется и вся озвучка
@@ -2518,7 +2526,7 @@ window.addEventListener("error", (e) => {
     } catch (e) { toast("Не получилось: " + e.message, 4000); }
     if (Native) await refreshAudio();
     renderUsage();
-  };
+  }
 
   $("btnLicense").onclick = () => ask("Лицензия BookReader", licenseHtml(), [{ label: "Закрыть", primary: true, value: 1 }]);
 
