@@ -1659,6 +1659,7 @@ window.addEventListener("error", (e) => {
     el.lib.classList.toggle("selecting", on);
     el.selBar.hidden = !on;
     el.btnSelect.title = on ? "Закончить выбор" : "Выбрать несколько";
+    if (!on && !el.libView.hidden) libTitle();
     el.libList.querySelectorAll(".lib-actions").forEach((a) => (a.hidden = true));
     renderLibrary();
     updateSelBar();
@@ -1668,9 +1669,15 @@ window.addEventListener("error", (e) => {
     if (item) item.classList.toggle("sel", selected.has(id));
     updateSelBar();
   }
+  // заголовок панели: «Библиотека N» или, в режиме выбора, «Выбрано: N» (в панели внизу ему не хватает места)
+  function libTitle() {
+    if (selecting) { el.libHeadTitle.textContent = `Выбрано: ${selected.size}`; return; }
+    el.libHeadTitle.innerHTML = `Библиотека <span class="count" id="libCount">${libCache.length || ""}</span>`;
+    el.libCount = document.getElementById("libCount") || el.libCount;
+  }
   function updateSelBar() {
     const n = selected.size;
-    el.selCount.textContent = `Выбрано: ${n}`;
+    if (el.libView && !el.libView.hidden) libTitle();
     const visible = sortedBooks();
     const allOn = visible.length > 0 && visible.every((m) => selected.has(m.id));
     el.selAll.title = allOn ? "Снять выбор" : "Выбрать все";
@@ -3041,9 +3048,8 @@ window.addEventListener("error", (e) => {
     el.btnSelect.hidden = v !== "lib";
     if (v !== "lib" && selecting) setSelecting(false);
     el.setBack.hidden = v === "lib";
-    el.libHeadTitle.innerHTML = v === "settings" ? "Настройки" : v === "catalog" ? "Каталог сервера"
-      : `Библиотека <span class="count" id="libCount">${libCache.length || ""}</span>`;
-    el.libCount = document.getElementById("libCount") || el.libCount;
+    if (v === "lib") libTitle();
+    else el.libHeadTitle.textContent = v === "settings" ? "Настройки" : "Каталог сервера";
     if (v === "catalog") loadCatalog();
   }
   const showSettings = (on) => showView(on ? "settings" : "lib");
