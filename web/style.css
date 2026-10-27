@@ -535,7 +535,7 @@ html.native .set-field.native-only { display: flex !important; }
 .selecting .lib-item.sel .lib-check svg { opacity: 1; }
 #btnSelect svg { width: 22px; height: 22px; }
 .selecting #btnSelect { color: var(--accent); background: var(--hl-soft); }
-.sel-bar { display: grid; grid-template-columns: 1fr repeat(4, auto); align-items: center; gap: 4px; padding: 8px 10px;
+.sel-bar { display: grid; grid-template-columns: auto 1fr repeat(4, auto); align-items: center; gap: 4px; padding: 8px 10px;
   border-top: 1px solid var(--line); background: var(--surface); }
 .sel-bar[hidden] { display: none; }
 .sel-count { font-size: 13.5px; font-weight: 600; padding-left: 4px; white-space: nowrap; }
@@ -649,7 +649,7 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .chap-var input { margin-top: 3px; accent-color: var(--accent); width: 18px; height: 18px; flex: none; }
 .chap-var small { color: var(--muted); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 330px; }
 .chap-var span { min-width: 0; }
-.chap-prev { border: 1px solid var(--line); border-radius: 10px; max-height: 220px; overflow: auto; padding: 4px 0; background: var(--bg); }
+.chap-prev { border: 1px solid var(--line); border-radius: 10px; min-height: 180px; max-height: min(48vh, 420px); overflow: auto; padding: 4px 0; background: var(--bg); }
 .chap-prev-head { font-weight: 600; padding: 4px 10px 6px; font-size: 13px; color: var(--muted); }
 .chap-prev-row { padding: 3px 10px; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chap-prev-row.more { color: var(--muted); }
@@ -713,15 +713,10 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .prp-crumb.here { color: var(--ink); font-weight: 650; cursor: default; background: none; }
 .prp-sep { color: var(--muted); }
 .prp-tools { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 8px 14px 10px; border-bottom: 1px solid var(--line); }
-.prp-tools[hidden], .prp-selbar[hidden] { display: none; }
+.prp-tools[hidden], .prp .sel-bar[hidden], .prp-io[hidden] { display: none; }
 .prp-tools .set-btn { height: 40px; min-width: 0; }
 .prp-search { grid-column: 1 / -1; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-size: 15px; min-width: 0; }
-.prp-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--hl-soft); }
-.prp-all { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
-.prp-all input, .prp-check { accent-color: var(--accent); width: 20px; height: 20px; flex: none; margin: 0; }
-.prp-count { font-size: 13.5px; color: var(--muted); flex: 1; }
-.prp-selbtns { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
-.prp-selbtns .set-btn { flex: 1 1 auto; height: 38px; font-size: 13.5px; min-width: 0; padding: 0 10px; }
+.prp-check { accent-color: var(--accent); width: 20px; height: 20px; flex: none; margin: 0; }
 .prp-list { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 4px 0 12px; }
 .prp-item { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 14px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
 .prp-check { display: none; }
@@ -795,3 +790,12 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .lib-fav.on { color: #e0a800; }
 .lib-fav.on svg { fill: #f5c518; }
 .selecting .lib-fav { display: none; }
+
+/* колонки с прокруткой: элементы не сжимаются (иначе кнопки в настройках и предпросмотр глав сплющивает) */
+.set-view > *, .modal-body > * { flex-shrink: 0; }
+/* «Произношение»: панель выбора внизу — как в библиотеке */
+.prp .sel-bar { border-top: 1px solid var(--line); }
+.prp .sel-count { white-space: nowrap; line-height: 1.25; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.prp .sel-btn { min-width: 46px; padding: 4px 3px; }
+.prp-tools .prp-select.on { color: var(--accent); background: var(--hl-soft); border-color: var(--accent); }
+.prp .sel-count small { display: block; font-weight: 400; color: var(--muted); font-size: 11.5px; }

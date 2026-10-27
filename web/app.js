@@ -1685,6 +1685,7 @@ window.addEventListener("error", (e) => {
     toggleSelected(id, [...el.libList.querySelectorAll(".lib-item")].find((x) => x.dataset.id === id));
   }, ".lib-actions");
   el.btnSelect.onclick = () => setSelecting(!selecting);
+  $("selCancel").onclick = () => setSelecting(false);
   el.selAll.onclick = () => {
     const visible = sortedBooks(); // «все» — с учётом поиска
     const allOn = visible.every((m) => selected.has(m.id));

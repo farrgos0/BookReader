@@ -125,17 +125,15 @@
         <button class="icon-btn prp-select" title="Выбрать несколько" aria-label="Выбрать несколько"><svg><use href="#i-select"/></svg></button>
         <input type="search" class="prp-search" placeholder="Поиск по всем папкам" aria-label="Поиск правил">
       </div>
-      <div class="prp-selbar" hidden>
-        <label class="prp-all"><input type="checkbox"> <span>Выбрать всё</span></label>
-        <span class="prp-count"></span>
-        <div class="prp-selbtns">
-          <button class="set-btn prp-g-books" disabled>Где применяется…</button>
-          <button class="set-btn prp-g-move" disabled>Переместить…</button>
-          <button class="set-btn danger prp-g-del" disabled>Удалить</button>
-          <button class="set-btn primary prp-g-done">Готово</button>
-        </div>
-      </div>
       <div class="prp-list"></div>
+      <div class="sel-bar prp-selbar" hidden>
+        <button class="sel-btn prp-g-done" title="Отменить выбор" aria-label="Отменить выбор"><svg><use href="#i-x"/></svg><span>Отмена</span></button>
+        <span class="sel-count prp-count"></span>
+        <button class="sel-btn prp-all" title="Выбрать все" aria-label="Выбрать все"><svg><use href="#i-all"/></svg><span>Все</span></button>
+        <button class="sel-btn prp-g-books" title="Где применяется…" aria-label="Где применяется" disabled><svg><use href="#i-books"/></svg><span>Книги</span></button>
+        <button class="sel-btn prp-g-move" title="Переместить…" aria-label="Переместить" disabled><svg><use href="#i-move"/></svg><span>Перенести</span></button>
+        <button class="sel-btn danger prp-g-del" title="Удалить выбранное" aria-label="Удалить выбранное" disabled><svg><use href="#i-trash"/></svg><span>Удалить</span></button>
+      </div>
       <div class="prp-io"><button class="set-btn prp-export">Экспорт</button><button class="set-btn prp-import">Импорт</button>
         <input type="file" class="prp-file" accept=".json,application/json" hidden></div>
     </div>`;
@@ -183,7 +181,9 @@
       [...sel.folders].forEach((id) => { if (!M.folder(d, id)) sel.folders.delete(id); });
       root.classList.toggle("selecting", selecting);
       $q(".prp-selbar").hidden = !selecting;
-      $q(".prp-tools").hidden = selecting;
+      $q(".prp-io").hidden = selecting;            // как в библиотеке: внизу вместо «Экспорт / Импорт»
+      $q(".prp-select").classList.toggle("on", selecting);
+      $q(".prp-select").title = selecting ? "Закончить выбор" : "Выбрать несколько";
       updateSel();
     }
     function visible() {
@@ -192,18 +192,19 @@
     }
     function updateSel() {
       const n = M.selectedRules(d, selection()).length, k = sel.folders.size;
-      $q(".prp-count").textContent = !k && !sel.rules.size ? "Ничего не выбрано"
-        : `Выбрано: ${nRules(n)}${k ? ` (${nFolders(k)})` : ""}`;
+      // «Выбрано: N» — отмеченные строки; если среди них папки — ниже мелко, сколько правил это затронет
+      $q(".prp-count").innerHTML = `Выбрано: ${sel.rules.size + k}` + (k ? `<small>${esc(nRules(n))}</small>` : "");
       const any = sel.rules.size + sel.folders.size > 0;
       $q(".prp-g-books").disabled = !n;
       $q(".prp-g-move").disabled = !any;
       $q(".prp-g-del").disabled = !any;
       const v = visible(), all = v.folders.length + v.rules.length;
       const on = v.folders.filter((f) => sel.folders.has(f.id)).length + v.rules.filter((r) => sel.rules.has(r.id)).length;
-      const box = $q(".prp-all input");
-      box.checked = all > 0 && on === all;
-      box.indeterminate = on > 0 && on < all;
-      box.disabled = !all;
+      const btn = $q(".prp-all"), allOn = all > 0 && on === all;
+      btn.dataset.on = allOn ? "1" : "";
+      btn.title = allOn ? "Снять выбор" : "Выбрать все";
+      btn.querySelector("span").textContent = allOn ? "Снять" : "Все";
+      btn.disabled = !all;
     }
     function check(kind, id, on) {
       const set = kind === "f" ? sel.folders : sel.rules;
@@ -356,12 +357,13 @@
       if (!on) { sel.rules.clear(); sel.folders.clear(); }
       render();
     }
-    $q(".prp-select").onclick = () => setSelecting(true);
+    $q(".prp-select").onclick = () => setSelecting(!selecting);
     $q(".prp-g-done").onclick = () => setSelecting(false);
-    $q(".prp-all input").onchange = (e) => {
+    $q(".prp-all").onclick = (e) => {
+      const add = !e.currentTarget.dataset.on;     // всё уже выбрано — снять
       const v = visible();
-      v.folders.forEach((f) => (e.target.checked ? sel.folders.add(f.id) : sel.folders.delete(f.id)));
-      v.rules.forEach((r) => (e.target.checked ? sel.rules.add(r.id) : sel.rules.delete(r.id)));
+      v.folders.forEach((f) => (add ? sel.folders.add(f.id) : sel.folders.delete(f.id)));
+      v.rules.forEach((r) => (add ? sel.rules.add(r.id) : sel.rules.delete(r.id)));
       render();
     };
     $q(".prp-g-books").onclick = async () => {
