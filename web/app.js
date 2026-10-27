@@ -2319,7 +2319,8 @@ window.addEventListener("error", (e) => {
   }
   // ---------- личные правила произношения (pron.js) ----------
   $("btnPron").onclick = () => Pron.dialog({
-    ask, askEl, esc, toast,
+    ask, askEl, esc, toast, askCancel,
+    askFinish: (v) => { if (askDone) askDone(v); },   // закрыть окно без проверки «не сохранено» (уже сохранили)
     library: async () => (await Library.list()).map((b) => ({ id: b.id, title: b.title || b.name || b.id })),
     catalog: () => (catItems || []).map((c) => ({ id: c.id, title: c.title || c.name || c.id })),
     speak: async (text, extra) => {
@@ -2456,6 +2457,7 @@ window.addEventListener("error", (e) => {
       if (askEl.box.dataset.closable) askCancel();
       return true; // соглашение при первом запуске «Назад» не закрывает
     }
+    if (Pron.isOpen()) { Pron.back(); return true; }   // страница «Произношение»: на уровень выше / закрыть
     if (!el.dl.hidden) { closeDl(); return true; }
     const menu = [...el.libList.querySelectorAll(".lib-actions")].find((a) => !a.hidden);
     if (menu && el.lib.classList.contains("open")) { menu.hidden = true; resetActions(menu); return true; }
@@ -3017,6 +3019,7 @@ window.addEventListener("error", (e) => {
 
   document.addEventListener("keydown", (e) => {
     if (!askEl.box.hidden && e.code !== "Escape") return; // открыт вопрос — клавиши читалки не работают
+    if (Pron.isOpen() && askEl.box.hidden) { if (e.code === "Escape" && !e.target.matches("input, select, textarea")) Pron.back(); return; }
     if (e.target.matches("select, textarea, input:not([type=range]):not([type=file])")) return;
     if (e.target.matches("input") && e.code !== "Space") return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;

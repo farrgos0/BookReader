@@ -661,30 +661,24 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .sleep-left { position: absolute; right: -2px; top: -2px; min-width: 18px; padding: 0 4px; height: 16px; border-radius: 8px;
   background: var(--accent); color: var(--accent-ink); font-size: 10.5px; font-weight: 700; line-height: 16px; text-align: center; }
 
-/* ---------- окно «Произношение» (pron.js) ---------- */
+/* ---------- «Произношение» (pron.js): окна правила и папки ---------- */
 .pr { display: flex; flex-direction: column; gap: 12px; }
-.pr-list { display: flex; flex-direction: column; gap: 8px; }
 .pr-empty, .pr-none { color: var(--muted); font-size: 13.5px; padding: 6px 2px; }
-.pr-rule { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
 .pr-line { display: flex; align-items: center; gap: 6px; }
 .pr-line input.pr-w, .pr-line input.pr-s {
   flex: 1; min-width: 0; height: 38px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--surface); color: var(--ink); font-size: 15px;
 }
-.pr-line input.pr-w { flex: 0.8; }
 .pr-line input.bad { border-color: #c0392b; }
 .pr-case { display: flex; align-items: center; gap: 3px; font-size: 13px; color: var(--muted); cursor: pointer; flex: none; }
 .pr-case input { accent-color: var(--accent); width: 16px; height: 16px; }
-.pr-eq { color: var(--muted); flex: none; }
 .pr-line .icon-btn { flex: none; width: 44px; height: 44px; font-size: 16px; border: 1px solid var(--line); border-radius: 10px; }
-.pr-line .pr-del { margin-left: 8px; color: #c0392b; }
 .pr-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
 .pr-confirm[hidden] { display: none; }
 .pr-confirm span { flex: 1 1 100%; }
 .pr-confirm .set-btn { flex: 1; height: 38px; font-size: 14px; }
 .set-btn.danger { color: #c0392b; border-color: #c0392b; }
 .pr-err { color: #c0392b; font-size: 12.5px; }
-.pr-scope summary { font-size: 13px; color: var(--muted); cursor: pointer; }
 .pr-opt, .pr-book { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 3px 0; cursor: pointer; }
 .pr-opt input, .pr-book input { accent-color: var(--accent); }
 .pr-books { max-height: 180px; overflow: auto; padding: 4px 0 0 22px; }
@@ -692,14 +686,6 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .pr-help { font-size: 13.5px; }
 .pr-help summary { cursor: pointer; font-weight: 600; color: var(--accent); }
 .pr-help ul { padding-left: 18px; margin: 8px 0 0; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
-.pr-io { display: flex; gap: 8px; }
-.pr-io .set-btn { flex: 1; }
-@media (max-width: 460px) {
-  .pr-line { flex-wrap: wrap; }
-  .pr-line input.pr-w { flex: 1 1 0; }
-  .pr-line input.pr-s { flex: 1 1 100%; order: 5; }
-  .pr-eq { display: none; }
-}
 .modal.pr-open { place-items: start center; }
 .modal.pr-open .modal-card { max-height: calc(100dvh - 32px); }
 .pr-unsaved { position: sticky; top: -16px; z-index: 2; margin: -16px -16px 0; padding: 12px 16px; background: var(--hl-soft);
@@ -711,6 +697,72 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .modal-card > .modal-body { min-height: 0; flex: 1 1 auto; }
 .modal-card > .ask-actions { flex: none; }
 .ask-actions:empty { display: none; }
-.pr-rule.incomplete { border-color: #d9a441; }
 .pr-err { color: #b26a00; }
 .pr-unsaved span { font-size: 13.5px; }
+
+/* ---------- страница «Произношение» 2.0 (pron.js) ---------- */
+.prp { position: fixed; inset: 0; z-index: 65; background: rgba(0,0,0,.42); display: flex; justify-content: center; }
+.prp-card { width: min(760px, 100%); height: 100%; display: flex; flex-direction: column; background: var(--surface); color: var(--ink); box-shadow: 0 0 40px rgba(0,0,0,.25); }
+.prp-head { padding-left: 6px; gap: 6px; }
+.prp-title { flex: 1; font-size: 17px; }
+.prp-back { font-size: 26px; line-height: 1; }
+.prp-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 8px 12px 4px; font-size: 14px; }
+.prp-crumb { border: 0; background: none; color: var(--accent); font: inherit; padding: 6px 6px; border-radius: 6px; cursor: pointer; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prp-crumb:hover { background: var(--hl-soft); }
+.prp-crumb.here { color: var(--ink); font-weight: 650; cursor: default; background: none; }
+.prp-sep { color: var(--muted); }
+.prp-tools { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 8px 14px 10px; border-bottom: 1px solid var(--line); }
+.prp-tools[hidden], .prp-selbar[hidden] { display: none; }
+.prp-tools .set-btn { height: 40px; min-width: 0; }
+.prp-search { grid-column: 1 / -1; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-size: 15px; min-width: 0; }
+.prp-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--hl-soft); }
+.prp-all { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.prp-all input, .prp-check { accent-color: var(--accent); width: 20px; height: 20px; flex: none; margin: 0; }
+.prp-count { font-size: 13.5px; color: var(--muted); flex: 1; }
+.prp-selbtns { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.prp-selbtns .set-btn { flex: 1 1 auto; height: 38px; font-size: 13.5px; min-width: 0; padding: 0 10px; }
+.prp-list { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 4px 0 12px; }
+.prp-item { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 14px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.prp-check { display: none; }
+.prp.selecting .prp-check { display: block; }
+.prp.selecting .prp-more, .prp.selecting .prp-play { visibility: hidden; }
+.prp-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; color: inherit; font: inherit;
+  text-align: left; padding: 9px 4px; cursor: pointer; border-radius: 8px; min-height: 48px; }
+.prp-open:hover { background: var(--hl-soft); }
+.prp-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.prp-main b { font-weight: 650; }
+.prp-ws { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prp-main small { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prp-where { color: var(--accent) !important; }
+.prp-aa { font-weight: 700; color: var(--ink); }
+.prp-ico { flex: none; width: 26px; height: 20px; border-radius: 3px 5px 5px 5px; background: var(--hl); position: relative; margin-top: 3px; }
+.prp-ico::before { content: ""; position: absolute; left: 0; top: -4px; width: 11px; height: 6px; border-radius: 3px 3px 0 0; background: var(--hl); }
+.prp-folder .prp-main b { font-size: 15px; }
+.prp-item .icon-btn { flex: none; width: 44px; height: 44px; font-size: 16px; border-radius: 10px; }
+.prp-more { font-size: 20px !important; color: var(--muted); }
+.prp-empty { padding: 32px 22px; text-align: center; color: var(--muted); line-height: 1.6; font-size: 14px; }
+.prp-io { display: flex; gap: 8px; padding: 10px 14px 12px; border-top: 1px solid var(--line); }
+.prp-io .set-btn { flex: 1; height: 38px; }
+@media (min-width: 761px) { .prp { padding: 16px 0; } .prp-card { border-radius: 14px; overflow: hidden; } }
+
+.pr-edit { gap: 14px; }
+.pr-field { display: flex; flex-direction: column; gap: 5px; }
+.pr-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.pr-label small { font-weight: 400; }
+.pr-edit input.pr-w, .pr-edit input.pr-s, .pr-edit input.pr-name, .pr-edit select.pr-folder {
+  height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-size: 16px; min-width: 0; width: 100%; }
+.pr-edit input.bad { border-color: #c0392b; }
+.pr-edit .pr-line input.pr-s { flex: 1; height: 44px; }
+.pr-edit .pr-case { font-size: 14px; color: var(--ink); gap: 8px; align-self: flex-start; padding: 2px 0; }
+.pr-edit .pr-case input { width: 20px; height: 20px; }
+.pr-scope2 { display: flex; flex-direction: column; gap: 4px; }
+.pr-scope2 .pr-books { max-height: 200px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; margin-top: 4px; }
+.pr-hint { font-size: 13px; color: var(--muted); }
+.pr-err .link-btn { font-size: inherit; }
+.pr-foot { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: -16px; margin: 0 -16px -16px; padding: 12px 16px;
+  background: var(--surface); border-top: 1px solid var(--line); }
+.pr-foot .set-btn { flex: 1; height: 44px; min-width: 0; }
+.pr-foot .pr-del { flex: 0 1 auto; margin-right: auto; }
+.pr-sum { margin: 0; }
+.pr-repl ul { margin-top: 8px; font-size: 13.5px; gap: 4px; max-height: 260px; overflow: auto; }
