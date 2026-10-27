@@ -392,7 +392,7 @@ window.addEventListener("error", (e) => {
 
   // ---------- воспроизведение ----------
   async function playFrom(i) {
-    if (!segs.length) return;
+    if (!segs.length || !modeAllows("tts")) return;   // автономный режим: чтения вслух нет
     i = Math.max(0, Math.min(segs.length - 1, i));
     restartPhrase = false;
     if (Native) {
@@ -459,6 +459,7 @@ window.addEventListener("error", (e) => {
   }
 
   async function resume() {
+    if (!modeAllows("tts")) return;
     // выбрана фраза (касание, ползунок, оглавление) — читаем с неё
     if (pick >= 0) return readFrom(pick);
     // место чтения не на экране (перелистнули, прокрутили — читали глазами) — читаем с того, что на экране;
@@ -489,7 +490,7 @@ window.addEventListener("error", (e) => {
     } else playFrom(cur);
   }
 
-  function togglePlay() { if (!segs.length) return; playing ? pause() : resume(); }
+  function togglePlay() { if (!segs.length || !modeAllows("tts")) return; playing ? pause() : resume(); }
 
   function stop() {
     pause();
@@ -620,6 +621,7 @@ window.addEventListener("error", (e) => {
   // подсказка «двойное касание — читать отсюда» — первые несколько раз, чтобы не надоедать
   let tapHintAt = 0;
   function tapHint() {
+    if (!modeAllows("tts")) return;                  // автономный режим: двойное касание ничего не запускает
     const n = Number(store.get("tapHints", 0));
     if (n >= 3 || Date.now() - tapHintAt < 8000) return;
     tapHintAt = Date.now();
@@ -1494,7 +1496,7 @@ window.addEventListener("error", (e) => {
           <span class="lib-author">${esc(authors || "Автор не указан")}</span>
           <span class="lib-meta"><span class="badge">${esc(m.formatLabel || m.format || "")}</span>${fmtSize(m.size || 0)}<span class="lib-pct">${pct ? " · " + pct + "%" : " · не начата"}</span></span>
           <span class="lib-progress"><i style="width:${pct}%"></i></span>
-          ${Native ? audioBadge(m.id) : ""}
+          ${Native && modeAllows("tts") ? audioBadge(m.id) : ""}
         </span>
       </button>
       <button class="icon-btn lib-more" data-act="menu" title="Действия" aria-label="Действия">⋯</button>
@@ -1642,7 +1644,7 @@ window.addEventListener("error", (e) => {
   });
   // меню книги: основное и «Ещё…» (редкие действия — экспорт файла и сброс прогресса)
   function mainMenuHtml() {
-    return (Native ? '<button data-act="audio">Озвучка без интернета…</button>' : "") +
+    return (Native && modeAllows("tts") ? '<button data-act="audio">Озвучка без интернета…</button>' : "") +
       '<button data-act="rename">Переименовать</button><button data-act="more">Ещё…</button>';
   }
   function resetActions(actions) { actions.innerHTML = mainMenuHtml(); }
@@ -2305,6 +2307,7 @@ window.addEventListener("error", (e) => {
   // ---------- плашка о сервере: можно скрыть ✕ ----------
   let warnState = null, warnDismissed = null;
   function setWarn(kind, detail) {
+    if (kind && autonomous()) kind = null;            // автономный режим — сервера нет и не нужно
     if (kind !== warnState) warnDismissed = null;
     warnState = kind;
     if (!kind || warnDismissed === kind) { el.warn.hidden = true; return; }
@@ -2347,18 +2350,46 @@ window.addEventListener("error", (e) => {
 
   // ---------- режим «Без сервера» (приложение) ----------
   let offlineMode = false;
-  async function setOfflineMode(on) {
+  // ---------- режим работы (приложение): с сервером / без сервера / автономный (шаг 7) ----------
+  // Автономный режим — только чтение (и готовые аудиокниги — шаг 8): всё, что связано с нейроозвучкой и сервером,
+  // скрыто (элементы с классом tts-only), в сеть не ходим (кроме ручной проверки обновлений). Скачанная озвучка
+  // не удаляется — обратное переключение возвращает всё как было.
+  let appMode = "online";
+  const autonomous = () => appMode === "autonomous";
+  // что доступно в текущем режиме; шаг 8 — добавить сюда «audiobooks» (в автономном режиме тоже true)
+  function modeAllows(feature) {
+    if (feature === "tts" || feature === "server") return !autonomous();
+    if (feature === "audiobooks") return true;   // шаг 8: плеер готовых аудиокниг работает в любом режиме
+    return true;
+  }
+  function applyMode() {
+    document.documentElement.classList.toggle("autonomous", autonomous());
+    if (autonomous()) {
+      if (playing) pause();
+      setWarn(null);
+      if (!el.catPanel.hidden) showView("lib");
+      closeDl();
+    }
+    syncPlayerHeight();             // плеер скрыт — отступ снизу под него не нужен
+    renderLibrary();                // значки озвучки у книг
+  }
+  async function setMode(mode, quiet) {
     if (!Native) return;
-    try { await Native.call("SetOffline", on ? "true" : "false"); } catch (_) {}
-    offlineMode = on;
-    el.setServer.value = on ? "offline" : "online";
-    toast(on ? "Режим «Без сервера»: читаются только книги с загруженной озвучкой" : "Подключаюсь к серверу…", 3500);
+    try { await Native.call("SetMode", mode); }
+    catch (_) { try { await Native.call("SetOffline", mode === "online" ? "false" : "true"); } catch (_) {} }   // старое приложение
+    appMode = mode;
+    offlineMode = mode !== "online";
+    el.setServer.value = mode;
+    applyMode();
+    if (!quiet) toast(mode === "autonomous" ? "Автономный режим: только чтение, без сервера и нейроозвучки"
+      : mode === "offline" ? "Режим «Без сервера»: читаются только книги с загруженной озвучкой" : "Подключаюсь к серверу…", 3500);
     await loadServerInfo();
-    if (!on && !warnState) toast("Сервер на связи");
+    if (mode === "online" && !warnState && !quiet) toast("Сервер на связи");
     refreshAudio();
     if (!el.catPanel.hidden) loadCatalog();
   }
-  el.setServer.onchange = () => setOfflineMode(el.setServer.value === "offline");
+  const setOfflineMode = (on) => setMode(on ? "offline" : "online");
+  el.setServer.onchange = () => setMode(el.setServer.value);
 
   // ---------- окно-вопрос (соглашение, первый запуск, выбор голоса) ----------
   const askEl = { box: $("ask"), head: $("askHead"), body: $("askBody"), actions: $("askActions"), close: $("askClose") };
@@ -2551,18 +2582,14 @@ window.addEventListener("error", (e) => {
     if (!asked && !(await Native.hasServer())) {
       await Native.setPref("serverAsked", "1");
       const yes = await ask("Подключить сервер озвучки?",
-        `<p>Читать книги можно и так. Чтобы <b>слушать</b> их, нужен сервер BookReader на компьютере — он озвучивает текст голосами Silero.</p>
-         <p>Если сервер уже запущен на ПК в той же сети (Wi-Fi или точка доступа телефона), приложение найдёт его само.</p>`,
-        [{ label: "Не сейчас", value: "no" }, { label: "Да, найти сервер", primary: true, value: "yes" }], { closable: false });
+        `<p>Чтобы <b>слушать</b> книги, нужен сервер BookReader на компьютере — он озвучивает текст голосами Silero.
+         Если сервер уже запущен на ПК в той же сети (Wi-Fi или точка доступа телефона), приложение найдёт его само.</p>
+         <p>Без сервера приложение работает как обычная читалка — <b>автономный режим</b>: только чтение, без озвучки
+         и без подключения к сети. Переключить можно в любой момент: Настройки → «Режим».</p>`,
+        [{ label: "Читать без сервера", value: "no" }, { label: "Подключить сервер", primary: true, value: "yes" }], { closable: false });
       if (yes === "yes") { Native.openSettings(true); return true; }
-      await setOfflineMode(true);
-      await ask("Как подключить сервер позже",
-        `<p class="step">1. На компьютере</p>
-         <p>Запустите установщик сервера <b>install.bat</b> (папка BookReader). Он поставит всё нужное и создаст на рабочем столе ярлык <b>BookReader</b>. Запустите его — откроется окно сервера с адресом для телефона.</p>
-         <p class="step">2. В приложении</p>
-         <p>Слева кнопка книг <b>☰</b> → <b>Настройки</b> → «Сервер озвучки»: выберите «Подключаться к серверу на ПК», затем <b>«Подключение к серверу…»</b> → <b>«Найти сервер в сети»</b>. Можно ввести адрес вручную.</p>
-         <p>Пока сервер не подключён, включён режим «Без сервера»: читаются книги, а озвучка доступна только для заранее загруженных.</p>`,
-        [{ label: "Понятно", primary: true, value: 1 }]);
+      await setMode("autonomous", true);
+      return true;
     }
     return true;
   }
@@ -3001,6 +3028,12 @@ window.addEventListener("error", (e) => {
 
   // ---------- сервер ----------
   async function loadServerInfo() {
+    if (autonomous()) {              // сервера нет: голоса не нужны, плашек нет, версия сервера неизвестна
+      serverMeta = null;
+      setWarn(null);
+      renderUpdates();
+      return;
+    }
     try {
       let info;
       if (Native) {
@@ -3434,6 +3467,12 @@ window.addEventListener("error", (e) => {
   async function start() {
     applyView();
     updateUI();
+    if (Native) {
+      try { const m = await Native.call("GetMode"); if (m === "online" || m === "offline" || m === "autonomous") appMode = m; } catch (_) {}
+      offlineMode = appMode !== "online";
+      el.setServer.value = appMode;
+      applyMode();
+    }
     if (Native && (await firstRun()) === false) return;
     await loadServerInfo();
     await Library.migrateOld((f) => Books.parseFile(f));
@@ -3442,7 +3481,8 @@ window.addEventListener("error", (e) => {
     if (Native) { try { onQueue(await Native.Audio.queue()); } catch (_) {} }
     const last = store.get("lastBook", null);
     if (last && libCache.some((m) => m.id === last)) await openFromLibrary(last);
-    checkUpdates(false).catch(() => {});   // первый запуск за день — проверить выпуски на GitHub (в фоне)
+    // первый запуск за день — проверить выпуски на GitHub (в фоне); в автономном режиме — только вручную
+    if (!autonomous()) checkUpdates(false).catch(() => {});
   }
   start();
 })();

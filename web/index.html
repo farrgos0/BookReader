@@ -71,7 +71,7 @@
         <svg><use href="#i-plus"/></svg><span>Добавить</span>
         <input type="file" id="libFiles" accept=".fb2,.zip,.epub,.txt,.md,.html,.htm,.xhtml,.docx,.odt,.rtf,.mobi,.azw,.azw3,.prc,.pdf" multiple hidden>
       </label>
-      <button class="btn-cat" id="btnCatalog" title="Книги из папки catalog на сервере"><svg><use href="#i-cloud"/></svg><span>Каталог</span></button>
+      <button class="btn-cat tts-only" id="btnCatalog" title="Книги из папки catalog на сервере"><svg><use href="#i-cloud"/></svg><span>Каталог</span></button>
       <input type="search" id="libSearch" placeholder="Поиск" aria-label="Поиск">
       <select id="libSort" aria-label="Сортировка">
         <option value="recent">Недавние</option>
@@ -88,7 +88,7 @@
       <span class="sel-count" id="selCount" aria-hidden="true"></span>
       <button class="sel-btn" id="selAll" title="Выбрать все" aria-label="Выбрать все"><svg><use href="#i-all"/></svg><span>Все</span></button>
       <button class="sel-btn" id="selShare" title="Поделиться выбранными" aria-label="Поделиться выбранными"><svg><use href="#i-share"/></svg><span>Файлы</span></button>
-      <button class="sel-btn native-only" id="selAudio" title="Озвучка выбранных: загрузить или удалить" aria-label="Озвучка выбранных"><svg><use href="#i-voice"/></svg><span>Озвучка</span></button>
+      <button class="sel-btn native-only tts-only" id="selAudio" title="Озвучка выбранных: загрузить или удалить" aria-label="Озвучка выбранных"><svg><use href="#i-voice"/></svg><span>Озвучка</span></button>
       <button class="sel-btn danger" id="selDelete" title="Удалить выбранные книги" aria-label="Удалить выбранные книги"><svg><use href="#i-trash"/></svg><span>Удалить</span></button>
     </div>
     <div class="lib-foot">
@@ -112,26 +112,28 @@
           <option value="26">26</option><option value="28">28 — очень крупный</option><option value="32">32 — максимальный</option>
         </select>
       </label>
-      <label class="set-field native-only"><span>Сервер озвучки</span>
+      <label class="set-field native-only"><span>Режим</span>
         <select id="setServer">
-          <option value="online">Подключаться к серверу на ПК</option>
+          <option value="online">С сервером озвучки</option>
           <option value="offline">Без сервера — только скачанная озвучка</option>
+          <option value="autonomous">Автономный режим</option>
         </select>
       </label>
-      <label class="set-field"><span>Голос озвучки</span>
+      <label class="set-field tts-only"><span>Голос озвучки</span>
         <select id="voice"><option>…</option></select>
       </label>
-      <label class="set-field"><span>Даты вида 01.02.2001</span>
+      <label class="set-field tts-only"><span>Даты вида 01.02.2001</span>
         <select id="setDateOrder"><option value="dmy">ДД.ММ.ГГГГ — первое февраля</option><option value="mdy">ММ.ДД.ГГГГ — второе января</option></select>
       </label>
-      <button class="set-btn native-only" id="btnServer"><svg><use href="#i-gear"/></svg><span>Подключение к серверу…</span></button>
-      <button class="set-btn" id="btnPron"><span>Произношение…</span></button>
+      <button class="set-btn native-only tts-only" id="btnServer"><svg><use href="#i-gear"/></svg><span>Подключение к серверу…</span></button>
+      <button class="set-btn tts-only" id="btnPron"><span>Произношение…</span></button>
       <button class="set-btn" id="btnSpace"><span>Освободить место…</span></button>
       <button class="set-btn" id="btnLicense"><span>Лицензия и сторонние компоненты</span></button>
       <button class="set-btn" id="btnUpdCheck"><span>Проверить обновления</span></button>
       <p class="set-hint upd-line" id="updLine"></p>
       <p class="set-hint web-only">Клик по фразе — выбрать, двойной клик или ▶ — читать с неё.<br>Клавиши: пробел — читать / пауза, ← → — листать, T — оглавление, L — книги.</p>
-      <p class="set-hint native-only">Касание фразы — выбрать, двойное касание или ▶ — читать с неё.<br>Свайп от левого края — книги, от правого — оглавление.</p>
+      <p class="set-hint native-only tts-only">Касание фразы — выбрать, двойное касание или ▶ — читать с неё.<br>Свайп от левого края — книги, от правого — оглавление.</p>
+      <p class="set-hint auto-only">Автономный режим: только чтение — без сервера и нейроозвучки.<br>Свайп от левого края — книги, от правого — оглавление.</p>
     </div>
     <div class="cat-view" id="catPanel" hidden>
       <div class="cat-tools">
@@ -148,7 +150,7 @@
       <span>Оглавление</span>
       <button class="icon-btn" id="tocClose" title="Закрыть">✕</button>
     </div>
-    <div class="toc-tools native-only"><button class="set-btn" id="btnDl"><svg><use href="#i-dl"/></svg><span>Озвучка без интернета…</span></button></div>
+    <div class="toc-tools native-only tts-only"><button class="set-btn" id="btnDl"><svg><use href="#i-dl"/></svg><span>Озвучка без интернета…</span></button></div>
     <div class="toc-auto" id="tocAuto" hidden></div>
     <nav id="tocList"></nav>
   </aside>
@@ -185,7 +187,7 @@
   <button class="to-reading" id="toReading" hidden title="Вернуться к месту, где идёт чтение"><svg><use href="#i-locate"/></svg><span>К месту чтения</span></button>
   <div class="undo-bar" id="undoBar" hidden role="status"><span id="undoText"></span><button id="undoBtn">↩ Вернуться</button></div>
 
-  <footer class="player" id="player">
+  <footer class="player tts-only" id="player">
     <div class="progress-row">
       <input type="range" id="seek" min="0" max="0" value="0" step="1" disabled aria-label="Позиция в книге">
       <div class="seek-mark" id="seekMark" hidden title="Место чтения"></div>
