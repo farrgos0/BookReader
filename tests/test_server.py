@@ -115,6 +115,30 @@ class Rules(unittest.TestCase):
             self.assertIsNotNone(ru_rules.check_say(bad), bad)
 
 
+class TextFp(unittest.TestCase):
+    """Отпечатки озвученного текста — по ним приложение находит устаревшую скачанную озвучку (шаг 5)."""
+
+    def test_stable_and_sensitive(self):
+        import ru_rules
+        fp = server.text_fp
+        self.assertEqual(len(fp("Глава 1")), 12)
+        self.assertEqual(fp("Глава 1"), fp("Глава 1"))
+        self.assertNotEqual(fp("Глава 1"), fp("Глава 2"))
+        self.assertEqual(fp("Привет,   мир"), fp("Привет, мир"))          # одинаково звучит — один отпечаток
+        gg = ru_rules.Pron([{"w": "гг", "c": False, "s": "главный герой"}])
+        self.assertNotEqual(fp("гг пришёл", gg), fp("гг пришёл"))        # правило касается фразы
+        self.assertEqual(fp("Он пришёл", gg), fp("Он пришёл"))           # не касается — отпечаток прежний
+        mdy = ru_rules.Pron([], {"date_order": "mdy"})
+        self.assertNotEqual(fp("01.02.2001", mdy), fp("01.02.2001"))     # формат дат — только у фраз с датами
+        self.assertEqual(fp("Без дат", mdy), fp("Без дат"))
+        self.assertEqual(fp([1]), "")
+
+    def test_norm_version(self):
+        v = server.norm_version()
+        self.assertRegex(v, r"^[0-9a-f]{12}$")
+        self.assertEqual(v, server.norm_version())
+
+
 class BrokenFb2(unittest.TestCase):
     """Битый FB2 из конвертеров: абзацы вокруг строк таблицы, незакрытые теги — глава не теряется."""
 
@@ -479,6 +503,32 @@ class Api(unittest.TestCase):
         st, d = self.call("/api/tts_batch", {"items": [{"text": "а"}] * (server.BATCH_MAX + 1)})
         self.assertEqual(st, 400)
         self.error_text(d)
+
+    def test_batch_fp_and_text_fp(self):
+        """Пакет отдаёт отпечатки фраз; /api/text_fp считает те же отпечатки без озвучки."""
+        rules = [{"w": "гг", "c": False, "s": "главный герой"}]
+        body = {"speaker": "baya", "format": "opus", "items": [{"text": "гг пришёл"}, {"text": "Он ушёл"}], "rules": rules}
+        req = urllib.request.Request(self.url + "/api/tts_batch", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            fps = r.headers["X-Text-Fp"].split(",")
+            version = r.headers["X-Norm-Version"]
+        self.assertEqual(len(fps), 2)
+        st, d = self.call("/api/text_fp", {"items": ["гг пришёл", "Он ушёл"], "rules": rules})
+        self.assertEqual(st, 200)
+        res = json.loads(d)
+        self.assertEqual(res["fps"], fps)
+        self.assertEqual(res["version"], version)
+        st, d = self.call("/api/text_fp", {"items": ["гг пришёл", "Он ушёл"]})
+        plain = json.loads(d)["fps"]
+        self.assertNotEqual(plain[0], fps[0])       # без правила «гг» звучит иначе
+        self.assertEqual(plain[1], fps[1])
+        st, d = self.call("/api/ping")
+        self.assertEqual(json.loads(d)["norm"], version)
+        for bad in ({"items": "x"}, {"items": ["а"] * (server.TEXT_FP_MAX + 1)}, {"items": [], "rules": "x"}):
+            with self.subTest(bad=str(bad)[:30]):
+                st, d = self.call("/api/text_fp", bad)
+                self.assertEqual(st, 400)
+                self.error_text(d)
 
     def test_unknown_and_traversal(self):
         for path in ("/api/nope", "/../server.py", "/%2e%2e/server.py", "/..%5cserver.py", "/api/catalog/file/../x"):

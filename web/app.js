@@ -1841,6 +1841,8 @@ window.addEventListener("error", (e) => {
       else if (r.total && r.done >= r.total) { cls = "ok"; text = `✓ Загружено 100% · ${name}`; title = "Озвучка загружена целиком: сервер не нужен"; }
       else if (r.done) { cls = "part"; text = `◐ Загружено ${pct}% · ${name}`; title = "Загружена часть: остальное — с сервера"; }
       if (r.error && !r.running) { cls = "err"; text = `⚠ ${pct ? pct + "% · " : ""}ошибка загрузки`; title = r.error; }
+      const upd = (r.stale || 0) + (r.unknown || 0);
+      if (upd && !r.running) { text += " · ↻"; title += `. Ожидает обновления фраз: ${upd} — «Озвучка без интернета»`; }
       const more = rowsOf(id).filter((x) => x !== r && (x.done > 0 || x.running || x.queued)).length;
       if (more) { text += ` +${more}`; title += `. Других озвучек: ${more} — список в окне «Озвучка без интернета»`; }
     }
@@ -1928,6 +1930,7 @@ window.addEventListener("error", (e) => {
     if (r && r.error) text += ` ⚠ ${r.error}`;
     if (offlineMode) text = "Включён режим «Без сервера»: загружать не с чего. " + text;
     el.dlText.textContent = text;
+    updateRefresh(r);
     el.dlListen.hidden = !running && !(r && r.done);
     el.dlStart.hidden = running;
     el.dlStart.disabled = offlineMode;
@@ -1935,6 +1938,45 @@ window.addEventListener("error", (e) => {
     el.dlDelete.hidden = true; // удаление — у каждой озвучки в списке ниже
     renderPacks();
   }
+
+  // скачанная озвучка ждёт обновления (шаг 5): изменились правила / нормализатор сервера, или скачана до 1.2.0.
+  // Обновление — только по кнопке; до него и во время него старые фразы слушаются как раньше.
+  function updateRefresh(r) {
+    const box = $("dlUpd");
+    const stale = (r && r.stale) || 0, unknown = (r && r.unknown) || 0;
+    box.hidden = !r || r.running || r.queued || !(stale + unknown);
+    if (box.hidden) return;
+    const n = (k) => `${k.toLocaleString("ru")} ${plural(k, "фраза", "фразы", "фраз")}`;
+    const parts = [];
+    if (stale) parts.push(`<p><b>↻ Ожидает обновления: ${n(stale)}.</b> С тех пор, как они скачаны, изменились правила
+      произношения этой книги или обновился сервер — сейчас они прозвучали бы иначе.</p>`);
+    if (unknown) parts.push(`<p><b>↻ Скачано до версии 1.2.0: ${n(unknown)}.</b> Эта озвучка не знает о правилах
+      произношения и улучшениях чтения чисел и сокращений, и проверить её нельзя — её можно только синтезировать заново.</p>`);
+    parts.push(`<p class="dl-upd-hint">Пока не обновлено, слушается прежний вариант. «Обновить» скачает заново только эти фразы;
+      пока новая фраза не пришла (или пропала связь), звучит старая.</p>`);
+    box.querySelector(".dl-upd-text").innerHTML = parts.join("");
+    $("dlRefresh").disabled = offlineMode;
+    box.dataset.unknown = String(unknown);
+    box.dataset.total = String(stale + unknown);
+  }
+  $("dlRefresh").onclick = async () => {
+    const box = $("dlUpd"), voice = el.dlVoice.value;
+    const unknown = Number(box.dataset.unknown || 0), total = Number(box.dataset.total || 0);
+    if (unknown) {
+      // старую озвучку обновляем только по явному согласию: она будет синтезирована заново
+      const ok = await ask("Обновить озвучку?",
+        `<p>${total.toLocaleString("ru")} ${plural(total, "фраза", "фразы", "фраз")} будут синтезированы заново
+        с текущими правилами произношения. Это займёт время и место на сервере, как первая загрузка.</p>
+        <p>Можно не обновлять — тогда слушается старый вариант.</p>`,
+        [{ label: "Нет, оставить", value: null }, { label: "Да, обновить", primary: true, value: 1 }]);
+      if (!ok) return;
+    }
+    try {
+      const started = await Native.Audio.refresh(bookId, book.title, voice);
+      toast(started ? "Обновление озвучки началось — старые фразы заменяются по мере загрузки" : "Обновлять нечего", 3500);
+    } catch (e) { toast("Не получилось: " + netMessage(e), 5000); }
+    refreshAudio();
+  };
 
   // все озвучки этой книги: голос, сколько загружено, место; слушать / удалить
   function renderPacks() {
@@ -1945,7 +1987,9 @@ window.addEventListener("error", (e) => {
     if (!rows.length) { box.innerHTML = ""; return; }
     box.innerHTML = `<div class="dl-packs-head">Озвучки этой книги (${rows.length})</div>` + rows.map((r) => {
       const pct = r.total ? Math.floor((r.done / r.total) * 100) : 0;
-      const st = r.running ? "загружается" : r.queued ? "в очереди" : r.error ? "⚠ остановлена" : pct >= 100 ? "✓" : "";
+      const upd = (r.stale || 0) + (r.unknown || 0);
+      const st = r.running ? "загружается" : r.queued ? "в очереди" : r.error ? "⚠ остановлена"
+        : upd ? `↻ ожидает обновления: ${upd}` : pct >= 100 ? "✓" : "";
       const isCur = r.voice === el.voice.value;
       return `<div class="dl-pack${isCur ? " cur" : ""}" data-voice="${esc(r.voice)}">
         <div class="dl-pack-info"><b>Озвучка — ${esc(voiceName(r.voice))}</b>${isCur ? ' <span class="dl-pack-tag">сейчас</span>' : ""}

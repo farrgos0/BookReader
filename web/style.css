@@ -800,3 +800,11 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .prp-tools .prp-select.on { color: var(--accent); background: var(--hl-soft); border-color: var(--accent); }
 .prp .sel-count small { display: block; font-weight: 400; color: var(--muted); font-size: 11.5px; }
 .prp-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* «Озвучка без интернета»: озвучка ждёт обновления (шаг 5) */
+.dl-upd { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; padding: 10px 12px;
+  background: var(--hl-soft); display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.45; }
+.dl-upd[hidden] { display: none; }
+.dl-upd p { margin: 0; }
+.dl-upd-hint { color: var(--muted); font-size: 12.5px; }
+.dl-upd .set-btn { align-self: flex-start; padding: 0 16px; }

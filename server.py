@@ -151,6 +151,44 @@ def clean_for_speech(text, options=None, pron=None):
     return text.strip()
 
 
+# ---------- отпечатки текста: обновление скачанной озвучки (шаг 5 спецификации 1.2.0) ----------
+# Приложение хранит рядом с каждой скачанной фразой отпечаток того, что реально озвучено (после личных правил,
+# нормализатора, формата дат). Изменились правила или код нормализатора — сверяет отпечатки (/api/text_fp)
+# и предлагает докачать только затронутые фразы.
+NORM_SOURCES = ("server.py", "en_translit.py", "ru_names.py", "ru_nouns.py", "ru_numbers.py", "ru_rules.py", "ru_yo.py")
+TEXT_FP_MAX = 5000
+_norm_version = None
+
+
+def norm_version():
+    """Версия нормализатора — отпечаток его кода и данных: меняется сама при любом их изменении."""
+    global _norm_version
+    if _norm_version is None:
+        h = hashlib.sha1()
+        files = [os.path.join(paths.APP_DIR, f) for f in NORM_SOURCES]
+        for root, _, names in os.walk(os.path.join(paths.APP_DIR, "data")):
+            files += [os.path.join(root, n) for n in names]
+        for f in sorted(files):
+            try:
+                with open(f, "rb") as fh:
+                    data = fh.read()
+            except OSError:
+                continue
+            h.update(os.path.relpath(f, paths.APP_DIR).replace("\\", "/").encode() + b"\0" + data)
+        h.update(("en:" + (en_translit.status() if ENGLISH else "off")).encode())
+        _norm_version = h.hexdigest()[:12]
+    return _norm_version
+
+
+def text_fp(text, pron=None):
+    """Отпечаток того, что будет озвучено для фразы (12 символов); "" — фраза не принимается."""
+    try:
+        text = as_text(text)
+    except BadRequest:
+        return ""
+    return hashlib.sha1(clean_for_speech(text, pron=pron).encode("utf-8")).hexdigest()[:12]
+
+
 def split_text(text, max_len=MAX_CHUNK):
     sentences = re.split(r"(?<=[.!?])\s+", text.strip())
     chunks, current = [], ""
@@ -986,7 +1024,7 @@ def make_handler(synth, catalog=None):
                     "ok": True, "name": "BookReader", "version": VERSION,
                     "device": synth.engine.device, "time": time.time(),
                     "client": self.client_address[0], "queue": synth.queue.stats(),
-                    "host": server_name(), "id": SERVER_ID,
+                    "host": server_name(), "id": SERVER_ID, "norm": norm_version(),
                 })
                 return
             if self.path.startswith("/api/catalog"):
@@ -1073,15 +1111,34 @@ def make_handler(synth, catalog=None):
                 raise BadRequest("ожидался JSON-объект")
             return req
 
-        def send_bytes(self, data, ctype):
+        def send_bytes(self, data, ctype, headers=None):
             try:
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
+                for k, v in (headers or {}).items():
+                    self.send_header(k, v)
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
             except (ConnectionError, BrokenPipeError):
                 pass  # клиент передумал — ничего страшного
+
+        def send_text_fp(self):
+            """POST /api/text_fp {items: [текст фразы…], rules, opts} → {version, fps}: без озвучки, только отпечатки."""
+            try:
+                req = self.read_json()
+                items = req.get("items")
+                if not isinstance(items, list) or len(items) > TEXT_FP_MAX:
+                    raise BadRequest(f"нужен список текстов items, не больше {TEXT_FP_MAX}")
+                try:
+                    pron = ru_rules.from_request(req)
+                except ru_rules.RuleError as e:
+                    raise BadRequest(str(e))
+                self.send_json({"version": norm_version(), "fps": [text_fp(t, pron) for t in items]})
+            except BadRequest as e:
+                self.send_json({"error": str(e)}, e.code)
+            except (ConnectionError, BrokenPipeError):
+                pass
 
         def turn(self, live):
             """Кто спрашивает: устройство (заголовок X-BookReader-Client) или, без него, IP-адрес."""
@@ -1100,6 +1157,9 @@ def make_handler(synth, catalog=None):
 
         def do_POST(self):
             path = self.path.split("?")[0]
+            if path == "/api/text_fp":
+                self.send_text_fp()
+                return
             if path not in ("/api/tts", "/api/tts_batch"):
                 self.send_error(404)
                 return
@@ -1135,7 +1195,10 @@ def make_handler(synth, catalog=None):
                     q = synth.queue.stats()
                     who = f", клиентов: {q['clients']}" if q["clients"] > 1 else ""
                     sys.stderr.write(f"пакет: {len(items)} фраз за {time.time() - t0:.1f} с ({fmt}{who})\n")
-                    self.send_bytes(body, "application/x-bookreader-batch; format=" + fmt)
+                    # отпечатки озвученного текста — по одному на фразу, в том же порядке (шаг 5)
+                    fps = ",".join(text_fp(it.get("text"), pron) for it in items)
+                    self.send_bytes(body, "application/x-bookreader-batch; format=" + fmt,
+                                    {"X-Text-Fp": fps, "X-Norm-Version": norm_version()})
                     return
             except ClientGone:
                 self.close_connection = True   # клиент ушёл, пока ждал очереди, — отвечать некому

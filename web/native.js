@@ -162,9 +162,11 @@
 
   // ---------- скачанная озвучка ----------
   const Audio = {
-    status: async () => (await json("PreloadStatus")) || [],   // [{ bookId, voice, total, done, bytes, running, queued, jobDone, jobTotal, error }]
+    status: async () => (await json("PreloadStatus")) || [],   // [{ bookId, voice, total, done, bytes, running, queued, jobDone, jobTotal, error, stale, unknown }]
     start: (bookId, title, voice, from, to) => call("PreloadStart", bookId, title, voice, from, to),
     cancel: (bookId) => call("PreloadCancel", bookId),
+    // «Обновить»: заново — устаревшие фразы и скачанные до 1.2.0; true — поставлено в загрузку, false — нечего
+    refresh: async (bookId, title, voice) => (await call("PreloadRefresh", bookId, title, voice)) === "1",
     remove: (bookId, voice) => call("PreloadDelete", bookId, voice),
     bytes: async () => Number(await call("PreloadBytes")) || 0,
     enqueue: (bookId, title, voice, segs) => call("PreloadEnqueue", bookId, title, voice, JSON.stringify(segs)),
