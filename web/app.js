@@ -2317,16 +2317,26 @@ window.addEventListener("error", (e) => {
       if (!r.ok) throw new Error(await httpError(r, "tts"));
       return r.blob();
     },
-  }).then((saved) => {
-    if (!saved) return;
-    act("правила произношения сохранены");
-    if (!Native) {                       // браузер: уже полученная озвучка — со старыми правилами, получаем заново
+  }).then((saved) => { if (saved) pronApplied("Произношение сохранено"); });
+
+  // правила или порядок дат изменились — уже полученная озвучка устарела, получаем заново
+  function pronApplied(msg) {
+    act("произношение изменено");
+    if (!Native) {
       const wasPlaying = playing;
       clearAudioCache();
       if (wasPlaying && cur >= 0) readFrom(cur);
     } else Native.pronChanged();
-    toast("Произношение сохранено", 2500);
-  });
+    if (msg) toast(msg, 2500);
+  }
+  // порядок дня и месяца (01.02.2001) — общая настройка; хранится вместе с правилами (pron.js)
+  const dateSel = $("setDateOrder");
+  dateSel.value = (Pron.get().opts || {}).date_order || "dmy";
+  dateSel.onchange = async () => {
+    const d = Pron.get();
+    await Pron.save({ rules: d.rules, opts: { ...(d.opts || {}), date_order: dateSel.value } });
+    pronApplied();
+  };
 
   $("btnLicense").onclick = () => ask("Лицензия BookReader", licenseHtml(), [{ label: "Закрыть", primary: true, value: 1 }]);
 

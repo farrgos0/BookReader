@@ -676,7 +676,13 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .pr-case { display: flex; align-items: center; gap: 3px; font-size: 13px; color: var(--muted); cursor: pointer; flex: none; }
 .pr-case input { accent-color: var(--accent); width: 16px; height: 16px; }
 .pr-eq { color: var(--muted); flex: none; }
-.pr-line .icon-btn { flex: none; width: 34px; height: 34px; font-size: 14px; }
+.pr-line .icon-btn { flex: none; width: 44px; height: 44px; font-size: 16px; border: 1px solid var(--line); border-radius: 10px; }
+.pr-line .pr-del { margin-left: 8px; color: #c0392b; }
+.pr-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.pr-confirm[hidden] { display: none; }
+.pr-confirm span { flex: 1 1 100%; }
+.pr-confirm .set-btn { flex: 1; height: 38px; font-size: 14px; }
+.set-btn.danger { color: #c0392b; border-color: #c0392b; }
 .pr-err { color: #c0392b; font-size: 12.5px; }
 .pr-scope summary { font-size: 13px; color: var(--muted); cursor: pointer; }
 .pr-opt, .pr-book { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 3px 0; cursor: pointer; }

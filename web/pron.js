@@ -85,11 +85,8 @@
       </ul></details>`;
 
     const html = `<div class="pr">
-      <label class="set-field"><span>Даты вида 01.02.2001</span>
-        <select id="prDate"><option value="dmy">ДД.ММ.ГГГГ — первое февраля</option><option value="mdy">ММ.ДД.ГГГГ — второе января</option></select>
-      </label>
-      <div class="pr-list" id="prList"></div>
       <button class="set-btn" id="prAdd">+ Добавить слово</button>
+      <div class="pr-list" id="prList"></div>
       ${help}
       <div class="pr-io"><button class="set-btn" id="prExport">Экспорт</button><button class="set-btn" id="prImport">Импорт</button>
         <input type="file" id="prFile" accept=".json,application/json" hidden></div>
@@ -103,24 +100,12 @@
     const modal = ctx.askEl.box;
     modal.classList.add("pr-open");
     pr.finally(() => modal.classList.remove("pr-open"));
-    // сразу после того как клавиатура спряталась (окно меняет размер), касания по выбору даты не принимаем:
-    // это палец, который нажимал ▶ или ✕, а не выбор даты
-    let resizedAt = 0;
-    const onResize = () => { resizedAt = Date.now(); };
-    (window.visualViewport || window).addEventListener("resize", onResize);
-    pr.finally(() => (window.visualViewport || window).removeEventListener("resize", onResize));
-    const dateSel = body.querySelector("#prDate");
-    ["pointerdown", "mousedown", "touchstart", "click"].forEach((ev) => dateSel.addEventListener(ev, (e) => {
-      if (Date.now() - resizedAt < 600) { e.preventDefault(); e.stopPropagation(); }
-    }, { passive: false }));
     // кнопки (▶, ✕, флажок) не забирают фокус у поля ввода: на телефоне иначе прячется клавиатура,
-    // окно сдвигается — и касание попадает не туда (например, в выбор даты)
+    // окно сдвигается — и касание попадает не туда
     body.addEventListener("pointerdown", (e) => {
       const a = document.activeElement;
       if (a && a.matches && a.matches(".pr-w, .pr-s") && e.target.closest("button, .pr-case")) e.preventDefault();
     });
-    body.querySelector("#prDate").value = work.opts.date_order || "dmy";
-    body.querySelector("#prDate").onchange = (e) => { work.opts.date_order = e.target.value; };
 
     function scopeLabel(r) { return !r.books ? "Во всех книгах" : `В выбранных: ${r.books.length}`; }
 
@@ -132,9 +117,11 @@
           <label class="pr-case" title="Учитывать регистр"><input type="checkbox"${r.c ? " checked" : ""}><span>Аа</span></label>
           <span class="pr-eq">=</span>
           <input class="pr-s" placeholder="как звучит, + перед ударной" value="${esc(r.s)}" maxlength="200" aria-label="Как звучит">
-          <button class="icon-btn pr-play" title="Прослушать">▶</button>
-          <button class="icon-btn pr-del" title="Удалить правило">✕</button>
+          <button class="icon-btn pr-play" title="Прослушать" aria-label="Прослушать">▶</button>
+          <button class="icon-btn pr-del" title="Удалить правило" aria-label="Удалить правило">✕</button>
         </div>
+        <div class="pr-confirm" hidden><span></span>
+          <button class="set-btn pr-no">Отмена</button><button class="set-btn danger pr-yes">Удалить</button></div>
         <div class="pr-err" hidden></div>
         <details class="pr-scope"><summary>${esc(scopeLabel(r))}</summary>
           <label class="pr-opt"><input type="radio" name="sc-${r.id}" value="all"${r.books ? "" : " checked"}> Во всех книгах, включая новые</label>
@@ -158,7 +145,15 @@
       w.oninput = () => { r.w = w.value.trim(); validate(); };
       s.oninput = () => { r.s = s.value.replace(/\s+/g, " ").trim(); validate(); };
       d.querySelector(".pr-case input").onchange = (e) => { r.c = e.target.checked; };
-      d.querySelector(".pr-del").onclick = () => { work.rules = work.rules.filter((x) => x !== r); d.remove(); refresh(); };
+      const drop = () => { work.rules = work.rules.filter((x) => x !== r); d.remove(); refresh(); };
+      const confirm = d.querySelector(".pr-confirm");
+      d.querySelector(".pr-del").onclick = () => {
+        if (!r.w && !r.s) return drop();          // пустое, только что добавленное — без вопроса
+        confirm.querySelector("span").textContent = `Удалить правило «${r.w || r.s}»?`;
+        confirm.hidden = false;
+      };
+      confirm.querySelector(".pr-no").onclick = () => { confirm.hidden = true; };
+      confirm.querySelector(".pr-yes").onclick = drop;
       const sum = d.querySelector(".pr-scope summary"), books = d.querySelector(".pr-books");
       d.querySelectorAll(`input[name="sc-${r.id}"]`).forEach((x) => (x.onchange = () => {
         r.books = x.value === "all" ? null : (r.books || []);
@@ -198,11 +193,11 @@
     }
     body.querySelector("#prAdd").onclick = () => {
       const r = { id: uid(), w: "", c: false, s: "", books: null };
-      work.rules.push(r);
+      work.rules.unshift(r);                      // новые — сверху, ниже — старее
       const empty = list.querySelector(".pr-empty");
       if (empty) empty.remove();
       const d = row(r);
-      list.appendChild(d);
+      list.prepend(d);
       d.querySelector(".pr-w").focus();
     };
     body.querySelector("#prExport").onclick = () => {
@@ -223,9 +218,8 @@
         const add = (d.rules || []).filter((r) => r && r.w && r.s && !checkSay(r.s))
           .map((r) => ({ id: uid(), w: String(r.w), c: !!r.c, s: String(r.s), books: Array.isArray(r.books) ? r.books.map(String) : null }));
         const known = new Set(work.rules.map((r) => r.w + "\n" + (r.c ? 1 : 0)));
-        add.forEach((r) => { if (!known.has(r.w + "\n" + (r.c ? 1 : 0))) work.rules.push(r); });
+        add.reverse().forEach((r) => { if (!known.has(r.w + "\n" + (r.c ? 1 : 0))) work.rules.unshift(r); });
         if (d.opts && d.opts.date_order) work.opts.date_order = d.opts.date_order;
-        body.querySelector("#prDate").value = work.opts.date_order || "dmy";
         render();
         ctx.toast(`Добавлено правил: ${add.length}`, 3000);
       } catch (e) { ctx.toast("Файл не прочитан: " + e.message, 4000); }
