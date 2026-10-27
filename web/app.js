@@ -2888,6 +2888,7 @@ window.addEventListener("error", (e) => {
     if (!manual && store.get("updDay", "") === today()) return renderUpdates();
     const btn = $("btnUpdCheck");
     btn.disabled = true;
+    if (manual) btn.querySelector("span").textContent = "Проверяю…";
     try {
       const latest = await fetchLatest(repo);
       store.set("updLatest", latest);
@@ -2900,43 +2901,58 @@ window.addEventListener("error", (e) => {
     renderUpdates();
     const l = store.get("updLatest", null);
     if (l && l.version && (srvBehind(l) || appBehind(l))) {
-      if (manual || store.get("updToldFor", "") !== l.version) toast(`Доступна новая версия BookReader ${l.version} — Настройки → Обновления`, 5000);
+      if (manual) updatesDialog();
+      else if (store.get("updToldFor", "") !== l.version) toast(`Доступна новая версия BookReader ${l.version} — Настройки`, 5000);
       store.set("updToldFor", l.version);
     } else if (manual && l) toast("Установлены последние версии", 2500);
   }
   const srvBehind = (l) => !!(serverMeta && l.version && l.server && isNewer(l.version, serverMeta.version));
   const appBehind = (l) => !!(Native && appVer && l.version && l.apk && isNewer(l.version, appVer));
+  // настройки: одна кнопка внизу и строка под ней; подробности и «Скачать»/«Установить» — в окне
   function renderUpdates() {
-    const box = $("updBox");
     const l = store.get("updLatest", null), err = store.get("updError", "");
-    const rows = [];
-    if (serverMeta) rows.push(`<div>Сервер: <b>${esc(serverMeta.version)}</b>${l && l.version ? (srvBehind(l) ? ` → доступна <b>${esc(l.version)}</b>` : " — последняя версия") : ""}</div>`);
-    else rows.push(`<div>Сервер: нет связи — версию не узнать</div>`);
-    if (Native) rows.push(`<div>Приложение: <b>${esc(appVer || "?")}</b>${l && l.version && appVer ? (appBehind(l) ? ` → доступна <b>${esc(l.version)}</b>` : " — последняя версия") : ""}</div>`);
-    if (Native && appVer && serverMeta && verNum(appVer).join(".") !== verNum(serverMeta.version).join(".")) {
-      const older = isNewer(serverMeta.version, appVer) ? "приложение" : "сервер";
-      rows.push(`<div class="upd-warn">Версии сервера и приложения разные — лучше обновить ${older}.</div>`);
-    }
-    if (l && srvBehind(l)) {
-      rows.push(serverMeta.here
-        ? `<button class="set-btn primary" id="btnUpdServer"><span>Установить обновление сервера ${esc(l.version)}</span></button>`
-        : `<div class="upd-hint">Обновление сервера ставится на ПК с сервером: откройте там читалку в браузере (Настройки → Обновления) или запустите update.bat.</div>`);
-    }
-    if (l && appBehind(l)) rows.push(`<button class="set-btn primary" id="btnUpdApp"><span>Скачать приложение ${esc(l.version)}${l.apkSize ? " (" + fmtSize(l.apkSize) + ")" : ""}</span></button>
-      <div class="upd-hint">Откроется браузер; после загрузки откройте файл — Android установит новую версию поверх старой (книги и настройки сохранятся).</div>`);
-    if (l && l.notes && (srvBehind(l) || appBehind(l))) rows.push(`<details class="upd-notes"><summary>Что нового в ${esc(l.version)}</summary><pre>${esc(l.notes)}</pre></details>`);
-    if (err) rows.push(`<div class="upd-hint">Последняя проверка не удалась: ${esc(err)}</div>`);
+    const btn = $("btnUpdCheck"), line = $("updLine");
+    const avail = l && (srvBehind(l) || appBehind(l));
+    btn.classList.toggle("primary", !!avail);
+    btn.querySelector("span").textContent = avail ? `Доступно обновление ${l.version}…` : "Проверить обновления";
+    const parts = [];
+    if (serverMeta) parts.push(`сервер ${serverMeta.version}`);
+    if (Native && appVer) parts.push(`приложение ${appVer}`);
+    let text = parts.length ? "Версия: " + parts.join(", ") : "";
+    if (l && l.version && !avail) text += (text ? " — последняя" : "Установлена последняя версия");
     const day = store.get("updDay", "");
-    if (day) rows.push(`<div class="upd-hint">Проверено: ${esc(day.split("-").reverse().join("."))}. Проверка — раз в день при запуске и этой кнопкой.</div>`);
-    box.innerHTML = rows.join("");
-    const s = document.getElementById("btnUpdServer");   // кнопок может не быть — $() бы упал
-    if (s) s.onclick = installServerUpdate;
-    const a = document.getElementById("btnUpdApp");
-    if (a) a.onclick = async () => { try { await Native.openUrl(l.apk); } catch (e) { toast("Не получилось: " + e.message, 4000); } };
+    if (day) text += `${text ? ". " : ""}Проверено ${day.split("-").reverse().join(".")}`;
+    if (err) text += `${text ? ". " : ""}Проверка не удалась: ${err}`;
+    if (Native && appVer && serverMeta && verNum(appVer).join(".") !== verNum(serverMeta.version).join(".")) text += ". Версии сервера и приложения разные";
+    line.textContent = text;
+    line.hidden = !text;
   }
-  async function installServerUpdate() {
+  // окно «Обновление BookReader X»: что обновить, что нового, кнопки «Скачать» / «Установить»
+  async function updatesDialog() {
     const l = store.get("updLatest", null);
-    const ok = await ask("Обновить сервер?", `<p>Будет установлена версия <b>${esc(l.version)}</b> с GitHub.</p>
+    if (!l || !l.version) return;
+    const srv = srvBehind(l), app = appBehind(l);
+    const rows = [];
+    if (serverMeta) rows.push(`<li>Сервер: <b>${esc(serverMeta.version)}</b>${srv ? ` → <b>${esc(l.version)}</b>` : " — последняя"}</li>`);
+    if (Native && appVer) rows.push(`<li>Приложение: <b>${esc(appVer)}</b>${app ? ` → <b>${esc(l.version)}</b>` : " — последняя"}</li>`);
+    let html = `<ul>${rows.join("")}</ul>`;
+    if (app) html += `<p class="upd-hint">«Скачать» откроет браузер. Когда файл загрузится, откройте его — Android установит новую версию
+      поверх старой; книги, озвучка и настройки сохранятся.</p>`;
+    if (srv && !serverMeta.here) html += `<p class="upd-hint">Сервер обновляется на компьютере с сервером: откройте там читалку
+      в браузере (Настройки → «Доступно обновление») или запустите update.bat.</p>`;
+    if (srv && serverMeta.here) html += `<p class="upd-hint">Сервер остановится примерно на минуту и запустится снова; если что-то пойдёт
+      не так, прежняя версия вернётся сама.</p>`;
+    if (l.notes) html += `<details class="upd-notes"${l.notes.length < 400 ? " open" : ""}><summary>Что нового в ${esc(l.version)}</summary><pre>${esc(l.notes)}</pre></details>`;
+    const buttons = [{ label: "Закрыть", value: null }];
+    if (srv && serverMeta.here) buttons.push({ label: "Установить на сервер", primary: !app, value: "srv" });
+    if (app) buttons.push({ label: `Скачать${l.apkSize ? " (" + fmtSize(l.apkSize) + ")" : ""}`, primary: true, value: "apk" });
+    const act = await ask(`Обновление BookReader ${l.version}`, html, buttons);
+    if (act === "apk") { try { await Native.openUrl(l.apk); } catch (e) { toast("Не получилось: " + e.message, 4000); } }
+    if (act === "srv") installServerUpdate(true);
+  }
+  async function installServerUpdate(confirmed) {
+    const l = store.get("updLatest", null);
+    const ok = confirmed || await ask("Обновить сервер?", `<p>Будет установлена версия <b>${esc(l.version)}</b> с GitHub.</p>
       <p>Откроется окно обновления; сервер остановится на минуту и запустится снова — чтение и загрузка озвучки прервутся.
       Если что-то пойдёт не так, прежняя версия вернётся сама.</p>`,
       [{ label: "Отмена", value: null }, { label: "Обновить", primary: true, value: 1 }]);
@@ -2958,7 +2974,12 @@ window.addEventListener("error", (e) => {
       if (Date.now() - t0 > 15 * 60000) clearInterval(poll);
     }, 3000);
   }
-  $("btnUpdCheck").onclick = () => checkUpdates(true);
+  // доступно обновление — окно с подробностями; иначе — проверить сейчас
+  $("btnUpdCheck").onclick = async () => {
+    const l = store.get("updLatest", null);
+    if (l && (srvBehind(l) || appBehind(l))) return updatesDialog();
+    await checkUpdates(true);
+  };
 
   // ---------- сервер ----------
   async function loadServerInfo() {
