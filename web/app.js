@@ -2462,26 +2462,30 @@ window.addEventListener("error", (e) => {
     if (isField(a)) { a.blur(); return true; }
     return false;
   }
-  // Касание мимо поля ввода прячет клавиатуру — но только ПОСЛЕ того, как касание сработало.
-  // Если прятать её в момент нажатия (так делает и сам браузер, перенося фокус), экран растёт, окно сдвигается,
-  // и к моменту, когда палец отпущен, под ним уже другой элемент: нажимали «Отмена» — попали в «Только в
-  // выбранных книгах». Поэтому фокус в момент нажатия не отдаём (preventDefault), а убираем после клика.
-  // Поля ввода, выпадающие списки и ползунки работают как обычно.
-  const textTarget = (t) => t.closest("textarea, select, [contenteditable], input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset])");
-  let blurAfterTap = null;
-  document.addEventListener("pointerdown", (e) => {
-    blurAfterTap = null;
-    const a = document.activeElement;
-    if (!isField(a) || !e.target.closest || textTarget(e.target)) return;
-    e.preventDefault();          // клавиатура остаётся, пока касание не сработает; прокрутка при этом работает
-    if (!e.target.closest("[data-keepkb]")) blurAfterTap = a;   // ▶ и «Аа» у правила — клавиатура остаётся совсем
+  // Открыта экранная клавиатура (фокус в поле ввода) — касание пальцем в любом месте только прячет её,
+  // интерфейс это касание не получает. Касание другого поля ввода — просто переводит в него курсор.
+  // Один обработчик на весь интерфейс; мышь (ПК) работает как обычно.
+  const typing = (n) => n && n.matches && n.matches("textarea, [contenteditable], input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=button]):not([type=submit]):not([type=reset]):not([type=color])");
+  let swallow = null;           // поле, клавиатуру которого прячет текущее касание
+  const dropKeyboard = (e) => {
+    if (!swallow) return;
+    e.preventDefault();         // не будет ни click, ни переноса фокуса
+    e.stopPropagation();        // и обработчики интерфейса касания не увидят
+    const a = swallow;
+    swallow = null;
+    a.blur();
+  };
+  window.addEventListener("pointerdown", (e) => {
+    swallow = null;
+    if (e.pointerType === "mouse" || !typing(document.activeElement) || (e.target.closest && typing(e.target.closest("input, textarea, [contenteditable]")))) return;
+    swallow = document.activeElement;
+    e.preventDefault();         // фокус остаётся до конца касания — ничего не сдвигается под пальцем
+    e.stopPropagation();
   }, true);
-  document.addEventListener("click", () => {
-    const a = blurAfterTap;
-    blurAfterTap = null;
-    // после обработчиков клика: если он сам не перевёл фокус в другое поле — прячем клавиатуру
-    if (a) setTimeout(() => { if (document.activeElement === a) a.blur(); }, 0);
-  }, true);
+  window.addEventListener("touchstart", (e) => { if (swallow) e.stopPropagation(); }, true);
+  window.addEventListener("touchend", dropKeyboard, true);
+  window.addEventListener("pointerup", (e) => { if (swallow && e.pointerType !== "touch") dropKeyboard(e); }, true);   // перо
+  window.addEventListener("click", (e) => { if (swallow) dropKeyboard(e); }, true);
   // «Готово»/Enter на клавиатуре в полях поиска — убрать клавиатуру
   document.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.target.matches && e.target.matches("input[type=search]")) e.target.blur();

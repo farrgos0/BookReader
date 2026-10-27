@@ -10,7 +10,7 @@
     const cancel = () => { clearTimeout(timer); timer = 0; start = null; };
     container.addEventListener("pointerdown", (e) => {
       fired = false;
-      if (e.pointerType === "mouse" || !e.isPrimary) return;
+      if (e.pointerType === "mouse" || !e.isPrimary || e.defaultPrevented) return;   // касание, прячущее клавиатуру, — не в счёт
       const item = e.target.closest(selector);
       if (!item || !container.contains(item) || e.target.closest(skip)) return;
       start = { x: e.clientX, y: e.clientY, item };

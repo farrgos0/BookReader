@@ -406,14 +406,6 @@
       box.classList.add("pr-open");
       p.finally(() => { if (tok === modalSeq) box.classList.remove("pr-open"); });
       const body = ctx.askEl.body;
-      // кнопки (▶, «Аа») не забирают фокус у поля ввода: на телефоне иначе прячется клавиатура и окно сдвигается
-      if (!body.dataset.prFocus) {
-        body.dataset.prFocus = "1";
-        body.addEventListener("pointerdown", (e) => {
-          const a = document.activeElement;
-          if (a && a.matches && a.matches(".pr-w, .pr-s, .pr-name") && e.target.closest(".pr-play, .pr-case")) e.preventDefault();
-        });
-      }
       return { p, body };
     }
     // предупреждение при выходе без сохранения (плашка вверху окна)
@@ -483,10 +475,10 @@
         ${unsavedBar("Изменения не сохранятся, если выйти сейчас: правило не запишется.")}
         <label class="pr-field"><span class="pr-label">Слово как в книге</span>
           <input class="pr-w" placeholder="например, гг" maxlength="60" value="${esc(init.w)}" autocomplete="off" autocapitalize="off"></label>
-        <label class="pr-case" data-keepkb><input type="checkbox"${init.c ? " checked" : ""}><span><b>Аа</b> — учитывать регистр</span></label>
+        <label class="pr-case"><input type="checkbox"${init.c ? " checked" : ""}><span><b>Аа</b> — учитывать регистр</span></label>
         <div class="pr-field"><span class="pr-label">Как звучит <small>(+ перед ударной гласной)</small></span>
           <div class="pr-line"><input class="pr-s" placeholder="например, главный герой" maxlength="200" value="${esc(init.s)}" autocomplete="off" autocapitalize="off" aria-label="Как звучит">
-          <button class="icon-btn pr-play" data-keepkb title="Прослушать" aria-label="Прослушать">▶</button></div></div>
+          <button class="icon-btn pr-play" title="Прослушать" aria-label="Прослушать">▶</button></div></div>
         <div class="pr-err" hidden></div>
         <label class="pr-field"><span class="pr-label">Папка</span><select class="pr-folder">${folderOptions(init.f)}</select></label>
         ${scopeHtml("prsc", init.books)}

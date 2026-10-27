@@ -1,8 +1,8 @@
-// Проверка: касание кнопок в окнах при открытой экранной клавиатуре (телефон).
+// Проверка: пока открыта экранная клавиатура, касание в любом месте только прячет её (телефон).
 // Клавиатура имитируется: фокус в поле — видимая область ниже, фокус ушёл — сразу прежняя (как на телефоне).
 // Запуск: из папки web поднять сервер (python -m http.server 8765), затем
 //   node tests/ui_keyboard_check.js [ширина высота] [адрес]      (нужен Playwright: npm i playwright)
-// По умолчанию 390×800 и http://127.0.0.1:8765/. Шаг 9.3 аудита интерфейса.
+// По умолчанию 390×800 и http://127.0.0.1:8765/. Шаг 10.3 аудита интерфейса (SPEC-1.2.0).
 const { chromium } = require('playwright');
 (async () => {
   const W = +(process.argv[2] || 390), H = +(process.argv[3] || 800), KB = Math.round(H * 0.42);
@@ -24,26 +24,44 @@ const { chromium } = require('playwright');
   await p.evaluate(() => localStorage.setItem('fb2r:pron', JSON.stringify({ v: 2, folders: [], rules: [{ id: '1', f: null, w: 'а', s: 'плюс', t: 1 }], opts: {} })));
   await p.reload(); await p.waitForTimeout(300);
   await p.evaluate(() => document.getElementById('btnPron').click()); await p.waitForTimeout(300);
-  for (const [btn, name] of [['.pr-cancel', 'Отмена'], ['.pr-save', 'Сохранить']]) {
-    await p.locator('.prp-rule .prp-open').first().tap(); await p.waitForTimeout(200);
-    await p.locator('.pr-s').tap(); await p.waitForTimeout(400);
-    if (name === 'Сохранить') { await p.locator('.pr-s').fill('пл+юс'); await p.waitForTimeout(100); }
-    const box = await p.locator(btn).boundingBox();
-    await p.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2); await p.waitForTimeout(500);
-    const st = await p.evaluate(() => ({ open: !document.getElementById('ask').hidden,
-      some: !!document.querySelector('#ask input[name=prsc][value=some]:checked'), s: JSON.parse(localStorage.getItem('fb2r:pron')).rules[0].s }));
-    if (name === 'Отмена') ok(!st.open && !st.some, `${W}×${H}: «Отмена» при открытой клавиатуре — окно закрыто, книги не тронуты`);
-    else ok(!st.open && st.s === 'пл+юс', `${W}×${H}: «Сохранить» при открытой клавиатуре — сохранено`);
-    if (st.open) { await p.evaluate(() => document.getElementById('askClose').click()); await p.waitForTimeout(200); const l = p.locator('.pr-u-leave'); if (await l.isVisible()) await l.tap(); await p.waitForTimeout(200); }
-  }
-  // касание «Аа» при открытой клавиатуре: переключается флажок, а не то, что окажется под пальцем
-  await p.locator('.prp-rule .prp-open').first().tap(); await p.waitForTimeout(200);
-  await p.locator('.pr-s').tap(); await p.waitForTimeout(400);
-  const cb = await p.locator('.pr-case input').boundingBox();
-  await p.touchscreen.tap(cb.x + cb.width / 2, cb.y + cb.height / 2); await p.waitForTimeout(400);
-  ok(await p.locator('.pr-case input').isChecked(), `${W}×${H}: «Аа» при открытой клавиатуре переключается`);
-  ok(await p.evaluate(() => document.activeElement && document.activeElement.classList.contains('pr-s')), `${W}×${H}: после «Аа» клавиатура остаётся`);
-  await p.locator('#askHead').tap(); await p.waitForTimeout(300);
-  ok(await p.evaluate(() => !document.activeElement || !document.activeElement.matches('input')), `${W}×${H}: касание мимо поля прячет клавиатуру`);
+  const kbOpen = () => p.evaluate(() => !!document.activeElement && document.activeElement.matches('input:not([type=checkbox]):not([type=radio])'));
+  const tapAt = async (sel) => { const r = await p.locator(sel).boundingBox(); await p.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2); await p.waitForTimeout(400); };
+  const state = () => p.evaluate(() => ({ open: !document.getElementById('ask').hidden,
+    some: !!document.querySelector('#ask input[name=prsc][value=some]:checked'),
+    c: !!document.querySelector('#ask .pr-case input:checked'), s: JSON.parse(localStorage.getItem('fb2r:pron')).rules[0].s }));
+  const openRule = async () => { await p.locator('.prp-rule .prp-open').first().tap(); await p.waitForTimeout(200); await p.locator('.pr-s').tap(); await p.waitForTimeout(300); };
+  const T = `${W}×${H}:`;
+
+  // «Отмена» при открытой клавиатуре: первое касание только прячет клавиатуру, второе — закрывает
+  await openRule();
+  ok(await kbOpen(), `${T} клавиатура открыта`);
+  await tapAt('.pr-cancel');
+  let st = await state();
+  ok(st.open && !st.some && !(await kbOpen()), `${T} касание «Отмены» при клавиатуре — только спрятало её, ничего не нажато`);
+  await tapAt('.pr-cancel');
+  ok(!(await state()).open, `${T} второе касание «Отмены» — окно закрыто`);
+
+  // «Сохранить»: так же
+  await openRule();
+  await p.locator('.pr-s').fill('пл+юс'); await p.waitForTimeout(100);
+  await tapAt('.pr-save');
+  st = await state();
+  ok(st.open && st.s === 'плюс' && !(await kbOpen()), `${T} касание «Сохранить» при клавиатуре — только спрятало её`);
+  await tapAt('.pr-save');
+  st = await state();
+  ok(!st.open && st.s === 'пл+юс', `${T} второе касание «Сохранить» — сохранено`);
+
+  // «Аа» и пустое место
+  await openRule();
+  await tapAt('.pr-case input');
+  ok(!(await state()).c && !(await kbOpen()), `${T} «Аа» при клавиатуре — не переключён, клавиатура спрятана`);
+  await tapAt('.pr-case input');
+  ok((await state()).c, `${T} второе касание «Аа» — переключён`);
+  // касание другого поля — курсор переходит в него, клавиатура остаётся
+  await p.locator('.pr-s').tap(); await p.waitForTimeout(300);
+  await tapAt('.pr-w');
+  ok(await p.evaluate(() => document.activeElement.classList.contains('pr-w')), `${T} касание другого поля — курсор в нём`);
+  await tapAt('#askHead');
+  ok(!(await kbOpen()) && (await state()).open, `${T} касание заголовка — клавиатура спрятана, окно на месте`);
   await b.close();
 })();
