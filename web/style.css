@@ -694,3 +694,5 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
   .pr-line input.pr-s { flex: 1 1 100%; order: 5; }
   .pr-eq { display: none; }
 }
+.modal.pr-open { place-items: start center; }
+.modal.pr-open .modal-card { max-height: calc(100dvh - 32px); }

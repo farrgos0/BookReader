@@ -99,6 +99,20 @@
     const body = ctx.askEl.body;
     const saveBtn = ctx.askEl.actions.querySelector('[data-i="1"]');
     const list = body.querySelector("#prList");
+    // окно прижато к верху: когда клавиатура появляется или прячется, оно не «прыгает» под пальцем
+    const modal = ctx.askEl.box;
+    modal.classList.add("pr-open");
+    pr.finally(() => modal.classList.remove("pr-open"));
+    // сразу после того как клавиатура спряталась (окно меняет размер), касания по выбору даты не принимаем:
+    // это палец, который нажимал ▶ или ✕, а не выбор даты
+    let resizedAt = 0;
+    const onResize = () => { resizedAt = Date.now(); };
+    (window.visualViewport || window).addEventListener("resize", onResize);
+    pr.finally(() => (window.visualViewport || window).removeEventListener("resize", onResize));
+    const dateSel = body.querySelector("#prDate");
+    ["pointerdown", "mousedown", "touchstart", "click"].forEach((ev) => dateSel.addEventListener(ev, (e) => {
+      if (Date.now() - resizedAt < 600) { e.preventDefault(); e.stopPropagation(); }
+    }, { passive: false }));
     // кнопки (▶, ✕, флажок) не забирают фокус у поля ввода: на телефоне иначе прячется клавиатура,
     // окно сдвигается — и касание попадает не туда (например, в выбор даты)
     body.addEventListener("pointerdown", (e) => {
