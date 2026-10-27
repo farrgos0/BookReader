@@ -1463,14 +1463,15 @@ window.addEventListener("error", (e) => {
   function sortedBooks() {
     const q = el.libSearch.value.trim().toLowerCase();
     const by = el.libSort.value;
-    let list = libCache.filter((m) => (!q || (m.title + " " + (m.authors || []).join(" ") + " " + m.name).toLowerCase().includes(q))
-      && (by !== "fav" || m.favorite));   // «★ Избранные» — только отмеченные звёздочкой, недавние сверху
+    let list = libCache.filter((m) => !q || (m.title + " " + (m.authors || []).join(" ") + " " + m.name).toLowerCase().includes(q));
     const coll = new Intl.Collator("ru");
     if (by === "title") list.sort((a, b) => coll.compare(a.title, b.title));
     else if (by === "author") list.sort((a, b) => coll.compare((a.authors || [])[0] || "яя", (b.authors || [])[0] || "яя") || coll.compare(a.title, b.title));
     else if (by === "added") list.sort((a, b) => b.addedAt - a.addedAt);
     else if (by === "progress") list.sort((a, b) => (b.progress || 0) - (a.progress || 0));
     else list.sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0));
+    // избранные (звёздочка) — выше остальных, внутри — тем же порядком (сортировка устойчивая)
+    list.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0));
     return list;
   }
 
@@ -1511,8 +1512,7 @@ window.addEventListener("error", (e) => {
     if (list.length) libVL.set(list.map((m, i) => ({ key: m.id, est: 92, html: bookCard(m).replace('<div class="lib-item', `<div data-vi="${i}" class="lib-item`) })));
     else {
       libVL.set([]);
-      el.libList.innerHTML = `<div class="lib-empty">${libCache.length ? (el.libSort.value === "fav" && !el.libSearch.value.trim()
-        ? "Избранных книг пока нет.<br>Отметьте книгу звёздочкой ☆ справа." : "Ничего не найдено") : "Библиотека пуста.<br>Добавьте книги кнопкой «Добавить» или перетащите файлы в окно."}</div>`;
+      el.libList.innerHTML = `<div class="lib-empty">${libCache.length ? "Ничего не найдено" : "Библиотека пуста.<br>Добавьте книги кнопкой «Добавить» или перетащите файлы в окно."}</div>`;
     }
     // недавние на стартовом экране
     const recent = [...libCache].sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0)).slice(0, 8);
@@ -1572,7 +1572,7 @@ window.addEventListener("error", (e) => {
         const on = !meta.favorite;
         try { await Library.update(id, { favorite: on }); } catch (err) { toast("Не получилось: " + err.message, 3500); return; }
         meta.favorite = on;
-        renderLibrary();   // виртуальный список хранит разметку строк; в «★ Избранные» книга уходит из списка
+        renderLibrary();   // виртуальный список хранит разметку строк; избранные поднимаются наверх
         toast(on ? "Добавлено в избранное" : "Убрано из избранного", 1800);
         return;
       }
@@ -1732,6 +1732,7 @@ window.addEventListener("error", (e) => {
   // поиск — после паузы в наборе: быстрый ввод/стирание не создаёт очередь перерисовок
   el.libSearch.oninput = debounce(() => { renderLibrary(); el.libList.scrollTop = 0; if (selecting) updateSelBar(); }, 150);
   el.libSort.value = store.get("libSort", "recent");
+  if (!el.libSort.value) el.libSort.value = "recent";   // сохранённый пункт, которого больше нет
   el.libSort.onchange = () => { store.set("libSort", el.libSort.value); renderLibrary(); };
   // в приложении книги выбираются системным диалогом (на Android поле выбора файла в WebView ненадёжно)
   async function nativePick() {
