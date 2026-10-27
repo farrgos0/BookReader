@@ -28,8 +28,13 @@
     }).catch(() => {});
   }
 
+  // правило годится для озвучки: заполнены оба поля и «как звучит» без ошибок
+  const complete = (r) => !!(r && r.w && r.s && !checkSay(r.s));
+
+  // сохраняются все непустые правила, в том числе недозаполненные (их можно дописать позже);
+  // в озвучку уходят только полностью заполненные (payload)
   async function save(next) {
-    data = { rules: next.rules.filter((r) => r.w && r.s && !checkSay(r.s)), opts: next.opts || {} };
+    data = { rules: next.rules.filter((r) => r.w || r.s), opts: next.opts || {} };
     const json = JSON.stringify(data);
     try { localStorage.setItem(KEY, json); } catch (_) {}
     // в приложении правила читает нативная озвучка — дожидаемся записи, прежде чем она возьмёт озвучку заново
@@ -53,7 +58,7 @@
   /** Что отправить серверу для книги id: { rules, opts } (пустые поля не отправляем). */
   function payload(bookId) {
     const out = {};
-    const rules = data.rules.filter((r) => !r.books || (bookId && r.books.includes(bookId)))
+    const rules = data.rules.filter((r) => complete(r) && (!r.books || (bookId && r.books.includes(bookId))))
       .map((r) => ({ w: r.w, c: !!r.c, s: r.s }));
     if (rules.length) out.rules = rules;
     if (data.opts && data.opts.date_order && data.opts.date_order !== "dmy") out.opts = { date_order: data.opts.date_order };
@@ -82,39 +87,55 @@
         <li>Только русские буквы. Числа и латиницу — словами: «HP» → «эйч-п+и», «3» → «три».</li>
         <li><b>Аа</b> — только слово с заглавной: имя «Роза», но не цветок.</li>
         <li>Каждая форма слова — отдельное правило: «Тёма», «Тёму».</li>
+        <li>Изменения сохраняются сами. <b>Не полностью заполненное правило</b> (нет слова, нет «как звучит» или
+          в нём ошибка) сохраняется, но <b>в озвучке не используется</b>, пока его не дописать. Пустые правила не сохраняются.</li>
       </ul></details>`;
 
     const html = `<div class="pr">
-      <div class="pr-unsaved" id="prUnsaved" hidden><b>Изменения не сохранены.</b> Сохранить перед выходом?
-        <div class="pr-u-btns"><button class="set-btn pr-u-stay">Остаться</button><button class="set-btn danger pr-u-drop">Не сохранять</button>
-        <button class="set-btn primary pr-u-save">Сохранить</button></div></div>
+      <div class="pr-unsaved" id="prUnsaved" hidden><b class="pr-u-title"></b>
+        <span></span>
+        <div class="pr-u-btns"><button class="set-btn pr-u-stay">Вернуться</button><button class="set-btn primary pr-u-leave">Выйти</button></div></div>
       <button class="set-btn" id="prAdd">+ Добавить слово</button>
       <div class="pr-list" id="prList"></div>
       ${help}
       <div class="pr-io"><button class="set-btn" id="prExport">Экспорт</button><button class="set-btn" id="prImport">Импорт</button>
         <input type="file" id="prFile" accept=".json,application/json" hidden></div>
     </div>`;
-    const buttons = [{ label: "Отмена", value: null }, { label: "Сохранить", primary: true, value: "save" }];
-    // несохранённые изменения: при закрытии (✕, «Отмена», «Назад» на телефоне) — напоминание
-    const snap = (w) => JSON.stringify([w.rules.filter((r) => r.w || r.s).map((r) => [r.w, !!r.c, r.s, r.books || null]), w.opts || {}]);
-    const initial = snap(work);
-    let unsaved = null;   // показано напоминание: функция-ответ
-    const beforeClose = () => {
-      if (snap(work) === initial) return true;
-      if (unsaved) return false;            // напоминание уже на экране
+
+    // что реально звучит: только полностью заполненные правила — по ним решаем, менять ли озвучку после окна
+    const effective = () => JSON.stringify([work.rules.filter(complete).map((r) => [r.w, !!r.c, r.s, r.books || null]), work.opts || {}]);
+    const before = effective();
+    let timer = 0;
+    const flush = () => { clearTimeout(timer); timer = 0; return save(work); };
+    const changed = () => { clearTimeout(timer); timer = setTimeout(flush, 400); };   // автосохранение
+
+    // при выходе (✕, фон, Esc, «Назад» на телефоне): есть недозаполненные — предупредить
+    let asking = null;
+    const beforeClose = async () => {
+      await flush();
+      const bad = work.rules.filter((r) => (r.w || r.s) && !complete(r));
+      if (!bad.length) return true;
+      if (asking) return false;
       return new Promise((resolve) => {
         const bar = body.querySelector("#prUnsaved");
+        bar.querySelector(".pr-u-title").textContent = bad.length === 1 ? "Одно правило заполнено не полностью."
+          : `Не полностью заполнено правил: ${bad.length}.`;
+        bar.querySelector("span").textContent = bad.length === 1
+          ? "Оно сохранено, но в озвучке не используется, пока его не дописать."
+          : "Они сохранены, но в озвучке не используются, пока их не дописать.";
         bar.hidden = false;
         bar.scrollIntoView({ block: "nearest" });
-        unsaved = (v) => { unsaved = null; bar.hidden = true; resolve(v); };
-        bar.querySelector(".pr-u-stay").onclick = () => unsaved(false);
-        bar.querySelector(".pr-u-drop").onclick = () => unsaved(true);
-        bar.querySelector(".pr-u-save").onclick = () => { unsaved(false); saveBtn.click(); };
+        asking = (v) => { asking = null; bar.hidden = true; resolve(v); };
+        bar.querySelector(".pr-u-stay").onclick = () => {
+          asking(false);
+          const first = list.querySelector(".pr-rule.incomplete");
+          if (first) { first.scrollIntoView({ block: "center" }); (first.querySelector(".pr-w").value ? first.querySelector(".pr-s") : first.querySelector(".pr-w")).focus(); }
+        };
+        bar.querySelector(".pr-u-leave").onclick = () => asking(true);
       });
     };
-    const pr = ctx.ask("Произношение", html, buttons, { beforeClose });
+    const pr = ctx.ask("Произношение", html, [], { beforeClose });
     const body = ctx.askEl.body;
-    const saveBtn = ctx.askEl.actions.querySelector('[data-i="1"]');
     const list = body.querySelector("#prList");
     // окно прижато к верху: когда клавиатура появляется или прячется, оно не «прыгает» под пальцем
     const modal = ctx.askEl.box;
@@ -156,16 +177,21 @@
         </details>`;
       const w = d.querySelector(".pr-w"), s = d.querySelector(".pr-s"), err = d.querySelector(".pr-err");
       const validate = () => {
-        const e = s.value.trim() || w.value.trim() ? checkSay(s.value) : "";
-        err.textContent = e ? "Как звучит: " + e : (s.value.trim() && !w.value.trim() ? "Укажите слово" : "");
-        err.hidden = !err.textContent;
-        s.classList.toggle("bad", !!e);
-        refresh();
+        const any = !!(w.value.trim() || s.value.trim());
+        let msg = "";
+        if (any && !w.value.trim()) msg = "Не указано слово";
+        else if (any && !s.value.trim()) msg = "Не указано, как звучит";
+        else if (any && checkSay(s.value)) msg = "Как звучит: " + checkSay(s.value);
+        err.textContent = msg ? msg + " — правило не используется в озвучке" : "";
+        err.hidden = !msg;
+        s.classList.toggle("bad", any && !!s.value.trim() && !!checkSay(s.value));
+        d.classList.toggle("incomplete", !!msg);
+        empty();
       };
-      w.oninput = () => { r.w = w.value.trim(); validate(); };
-      s.oninput = () => { r.s = s.value.replace(/\s+/g, " ").trim(); validate(); };
-      d.querySelector(".pr-case input").onchange = (e) => { r.c = e.target.checked; };
-      const drop = () => { work.rules = work.rules.filter((x) => x !== r); d.remove(); refresh(); };
+      w.oninput = () => { r.w = w.value.trim(); validate(); changed(); };
+      s.oninput = () => { r.s = s.value.replace(/\s+/g, " ").trim(); validate(); changed(); };
+      d.querySelector(".pr-case input").onchange = (e) => { r.c = e.target.checked; changed(); };
+      const drop = () => { work.rules = work.rules.filter((x) => x !== r); d.remove(); empty(); changed(); };
       const confirm = d.querySelector(".pr-confirm");
       d.querySelector(".pr-del").onclick = () => {
         if (!r.w && !r.s) return drop();          // пустое, только что добавленное — без вопроса
@@ -179,15 +205,17 @@
         r.books = x.value === "all" ? null : (r.books || []);
         books.hidden = !r.books;
         sum.textContent = scopeLabel(r);
+        changed();
       }));
       books.querySelectorAll("input[type=checkbox]").forEach((x) => (x.onchange = () => {
         const set = new Set(r.books || []);
         if (x.checked) set.add(x.value); else set.delete(x.value);
         r.books = [...set];
         sum.textContent = scopeLabel(r);
+        changed();
       }));
       d.querySelector(".pr-play").onclick = async () => {
-        if (!r.w || !r.s || checkSay(r.s)) { validate(); return; }
+        if (!complete(r)) { validate(); return; }
         try {
           const blob = await ctx.speak(r.w, { rules: [{ w: r.w, c: !!r.c, s: r.s }] });
           const url = URL.createObjectURL(blob);
@@ -199,29 +227,28 @@
       validate();
       return d;
     }
-    function refresh() {
-      const bad = work.rules.some((r) => (r.w || r.s) && (!r.w || checkSay(r.s)));
-      saveBtn.disabled = bad;
-      if (!work.rules.length && !list.querySelector(".pr-empty")) {
-        list.innerHTML = '<div class="pr-empty">Личных правил пока нет. Добавьте слово, которое звучит неправильно.</div>';
-      }
+    function empty() {
+      const has = work.rules.length > 0;
+      const msg = list.querySelector(".pr-empty");
+      if (!has && !msg) list.innerHTML = '<div class="pr-empty">Личных правил пока нет. Добавьте слово, которое звучит неправильно.</div>';
+      if (has && msg) msg.remove();
     }
     function render() {
       list.innerHTML = "";
       work.rules.forEach((r) => list.appendChild(row(r)));
-      refresh();
+      empty();
     }
     body.querySelector("#prAdd").onclick = () => {
       const r = { id: uid(), w: "", c: false, s: "", books: null };
       work.rules.unshift(r);                      // новые — сверху, ниже — старее
-      const empty = list.querySelector(".pr-empty");
-      if (empty) empty.remove();
       const d = row(r);
       list.prepend(d);
+      empty();
       d.querySelector(".pr-w").focus();
     };
     body.querySelector("#prExport").onclick = () => {
-      const blob = new Blob([JSON.stringify({ bookreader: "pronunciation", version: 1, ...work }, null, 2)], { type: "application/json" });
+      const out = { bookreader: "pronunciation", version: 1, rules: work.rules.filter((r) => r.w || r.s), opts: work.opts };
+      const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "bookreader-произношение.json";
@@ -235,20 +262,22 @@
       if (!f) return;
       try {
         const d = JSON.parse(await f.text());
-        const add = (d.rules || []).filter((r) => r && r.w && r.s && !checkSay(r.s))
-          .map((r) => ({ id: uid(), w: String(r.w), c: !!r.c, s: String(r.s), books: Array.isArray(r.books) ? r.books.map(String) : null }));
+        const add = (d.rules || []).filter((r) => r && (r.w || r.s))
+          .map((r) => ({ id: uid(), w: String(r.w || ""), c: !!r.c, s: String(r.s || ""), books: Array.isArray(r.books) ? r.books.map(String) : null }));
         const known = new Set(work.rules.map((r) => r.w + "\n" + (r.c ? 1 : 0)));
-        add.reverse().forEach((r) => { if (!known.has(r.w + "\n" + (r.c ? 1 : 0))) work.rules.unshift(r); });
+        const fresh = add.filter((r) => !known.has(r.w + "\n" + (r.c ? 1 : 0)));
+        work.rules = fresh.concat(work.rules);    // добавленные — сверху
         if (d.opts && d.opts.date_order) work.opts.date_order = d.opts.date_order;
         render();
-        ctx.toast(`Добавлено правил: ${add.length}`, 3000);
+        changed();
+        ctx.toast(`Добавлено правил: ${fresh.length}`, 3000);
       } catch (e) { ctx.toast("Файл не прочитан: " + e.message, 4000); }
       file.value = "";
     };
     render();
-    const v = await pr;
-    if (v === "save") { await save(work); return true; }
-    return false;
+    await pr;
+    await flush();
+    return effective() !== before;   // true — звучание изменилось, полученную озвучку надо получить заново
   }
 
   window.Pron = { get: () => data, save, payload, stamp, checkSay, dialog, onChange: (f) => listeners.push(f) };

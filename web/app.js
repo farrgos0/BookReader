@@ -2334,7 +2334,7 @@ window.addEventListener("error", (e) => {
       if (!r.ok) throw new Error(await httpError(r, "tts"));
       return r.blob();
     },
-  }).then((saved) => { if (saved) pronApplied("Произношение сохранено"); });
+  }).then((changed) => { if (changed) pronApplied("Произношение обновлено"); });
 
   // правила или порядок дат изменились — уже полученная озвучка устарела, получаем заново
   function pronApplied(msg) {

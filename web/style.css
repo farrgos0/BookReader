@@ -710,3 +710,7 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 /* окно с прокруткой: тело сжимается, кнопки «Отмена»/«Сохранить» всегда видны внизу */
 .modal-card > .modal-body { min-height: 0; flex: 1 1 auto; }
 .modal-card > .ask-actions { flex: none; }
+.ask-actions:empty { display: none; }
+.pr-rule.incomplete { border-color: #d9a441; }
+.pr-err { color: #b26a00; }
+.pr-unsaved span { font-size: 13.5px; }
