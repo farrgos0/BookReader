@@ -1,7 +1,7 @@
 /* Произношение 2.0 — данные личных правил (без интерфейса).
    Формат хранения v2:
      { v: 2,
-       folders: [{ id, name, parent }],                    parent — id папки или null (верхний уровень)
+       folders: [{ id, name, parent }],                    parent — id папки или null (корневая папка)
        rules:   [{ id, f, w, c, s, books, t }],             f — папка или null; t — время создания (новые сверху)
        opts:    { date_order } }
    Папка — только способ упорядочить правила: ничего не наследуется, у каждого правила своё «где применяется».
@@ -120,7 +120,7 @@
     for (let f = folder(d, id); f; f = f.parent === null ? null : folder(d, f.parent)) out.unshift(f);
     return out;
   }
-  const pathText = (d, id) => (id === null || id === undefined ? "Верхний уровень" : path(d, id).map((f) => f.name).join(" › "));
+  const pathText = (d, id) => (id === null || id === undefined ? "Корневая папка" : path(d, id).map((f) => f.name).join(" › "));
 
   /** id папки и всех вложенных в неё. */
   function subtree(d, id) {
@@ -317,7 +317,7 @@
     plan.folders = [...newFolders].map((s) => s.split("\n"));
     return plan;
   }
-  // папка по пути из названий (без учёта регистра) → id; [] — верхний уровень (null); нет — undefined
+  // папка по пути из названий (без учёта регистра) → id; [] — корневая папка (null); нет — undefined
   function findPath(d, names) {
     let cur = null;
     for (const n of names) {

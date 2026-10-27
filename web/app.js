@@ -1665,6 +1665,12 @@ window.addEventListener("error", (e) => {
     [el.selShare, el.selAudio, el.selDelete].forEach((b) => (b.disabled = !n));
   }
   const selBooks = () => libCache.filter((m) => selected.has(m.id));
+  // долгое нажатие на книгу (касание) — включить выбор и отметить её, как в Telegram
+  if (window.longPress) window.longPress(el.libList, ".lib-item", (item) => {
+    const id = item.dataset.id;
+    if (!selecting) setSelecting(true);
+    toggleSelected(id, [...el.libList.querySelectorAll(".lib-item")].find((x) => x.dataset.id === id));
+  }, ".lib-actions");
   el.btnSelect.onclick = () => setSelecting(!selecting);
   el.selAll.onclick = () => {
     const visible = sortedBooks(); // «все» — с учётом поиска

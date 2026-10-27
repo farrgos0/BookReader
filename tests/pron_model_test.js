@@ -106,7 +106,7 @@ function tree() {
 test("папки: путь, вложенные, счёт правил", () => {
   const { d, ran, x, deep } = tree();
   assert.strictEqual(M.pathText(d, deep), "Ранобэ › Серия X › Том 1");
-  assert.strictEqual(M.pathText(d, null), "Верхний уровень");
+  assert.strictEqual(M.pathText(d, null), "Корневая папка");
   assert.strictEqual(M.rulesIn(d, ran).length, 4);
   assert.strictEqual(M.rulesIn(d, x).length, 2);
   assert.deepStrictEqual(M.level(d, ran).folders.map((f) => f.name), ["Серия X", "Серия Y"]);

@@ -3,7 +3,7 @@
    их видела нативная озвучка) и уходят на сервер с каждым запросом озвучки — только те, что действуют
    для открытой книги. Сервер их не хранит. Формат правила: { id, f, w, c, s, books, t }:
      w — слово как в книге, c — учитывать регистр, s — как звучит, books — null (во всех книгах) или список id книг;
-     f — папка (null — верхний уровень), t — время создания. */
+     f — папка (null — корневая папка), t — время создания. */
 (function () {
   "use strict";
   const KEY = "fb2r:pron";
@@ -82,6 +82,9 @@
       <li>Одно слово — одно правило: второе правило с тем же словом сохранить нельзя.</li>
     </ul></details>`;
 
+  // перетаскивание — только там, где есть мышь (на телефоне — выбор и «Переместить…»)
+  const canDrag = !!(window.matchMedia && window.matchMedia("(pointer: fine)").matches);
+
   async function dialog(ctx) {
     if (page) return false;
     const { esc } = ctx;
@@ -92,7 +95,7 @@
     const cat = (ctx.catalog() || []).filter((c) => !lib.some((b) => b.id === c.id));
     const titleOf = (id) => (lib.find((b) => b.id === id) || cat.find((c) => c.id === id) || { title: "книга не найдена" }).title;
 
-    let cur = null;           // открытая папка (null — верхний уровень)
+    let cur = null;           // открытая папка (null — корневая папка)
     let query = "";
     let selecting = false;
     const sel = { rules: new Set(), folders: new Set() };
@@ -119,7 +122,7 @@
       <div class="prp-tools">
         <button class="set-btn prp-addf">+ Папка</button>
         <button class="set-btn primary prp-addr">+ Правило</button>
-        <button class="set-btn prp-select">Выбрать</button>
+        <button class="icon-btn prp-select" title="Выбрать несколько" aria-label="Выбрать несколько"><svg><use href="#i-select"/></svg></button>
         <input type="search" class="prp-search" placeholder="Поиск по всем папкам" aria-label="Поиск правил">
       </div>
       <div class="prp-selbar" hidden>
@@ -140,6 +143,8 @@
     const $q = (s) => root.querySelector(s);
     const list = $q(".prp-list"), crumbs = $q(".prp-crumbs"), search = $q(".prp-search");
 
+    const whereTo = (id) => (id === null || id === undefined ? "в корневую папку" : `в «${M.pathText(d, id)}»`);
+
     // ----- список уровня -----
     function scopeText(r) { return !r.books ? "Все книги" : r.books.length ? `В ${plural(r.books.length, "книге", "книгах", "книгах")}` : "Нигде"; }
 
@@ -151,7 +156,9 @@
       parts.forEach((f, i) => {
         if (i) crumbs.insertAdjacentHTML("beforeend", '<span class="prp-sep">›</span>');
         const b = document.createElement("button");
-        b.className = "prp-crumb" + (i === parts.length - 1 && !query ? " here" : "");
+        const here = i === parts.length - 1 && !query;
+        b.className = "prp-crumb" + (here ? " here" : "");
+        if (!here) b.dataset.drop = f.id === null ? "" : f.id;     // сюда можно перетащить
         b.textContent = f.name;
         b.onclick = () => { query = ""; search.value = ""; go(f.id); };
         crumbs.appendChild(b);
@@ -162,13 +169,14 @@
       let folders = [], rules = [];
       if (query) rules = M.search(d, query);
       else ({ folders, rules } = M.level(d, cur));
+      if (!query && cur !== null) list.appendChild(upRow());
       folders.forEach((f) => list.appendChild(folderRow(f)));
       rules.forEach((r) => list.appendChild(ruleRow(r)));
       if (!folders.length && !rules.length) {
-        list.innerHTML = query ? '<div class="prp-empty">Ничего не найдено.</div>'
+        list.insertAdjacentHTML("beforeend", query ? '<div class="prp-empty">Ничего не найдено.</div>'
           : cur === null && !d.folders.length
             ? '<div class="prp-empty">Личных правил пока нет. Добавьте слово, которое звучит неправильно, или папку для правил.</div>'
-            : '<div class="prp-empty">Здесь пока пусто. Добавьте правило или папку.</div>';
+            : '<div class="prp-empty">Здесь пока пусто. Добавьте правило или папку.</div>');
       }
       // выбор: убрать из выбранного то, чего больше нет
       [...sel.rules].forEach((id) => { if (!d.rules.some((r) => r.id === id)) sel.rules.delete(id); });
@@ -203,10 +211,22 @@
       updateSel();
     }
 
+    function upRow() {
+      const parent = M.folder(d, cur) ? M.folder(d, cur).parent : null;
+      const row = document.createElement("div");
+      row.className = "prp-item prp-up";
+      row.dataset.drop = parent === null ? "" : parent;
+      row.innerHTML = `<button class="prp-open"><span class="prp-ico up" aria-hidden="true"></span>
+        <span class="prp-main"><b>..</b><small>Наверх — ${esc(whereTo(parent))}</small></span></button>`;
+      row.querySelector(".prp-open").onclick = () => go(parent);
+      return row;
+    }
     function folderRow(f) {
       const n = M.rulesIn(d, f.id).length, sub = d.folders.filter((x) => x.parent === f.id).length;
       const row = document.createElement("div");
       row.className = "prp-item prp-folder";
+      row.dataset.kind = "f"; row.dataset.id = f.id; row.dataset.drop = f.id;
+      if (canDrag) row.draggable = true;
       row.innerHTML = `<input type="checkbox" class="prp-check" aria-label="Выбрать папку"${sel.folders.has(f.id) ? " checked" : ""}>
         <button class="prp-open"><span class="prp-ico" aria-hidden="true"></span>
           <span class="prp-main"><b>${esc(f.name)}</b><small>${esc(nRules(n))}${sub ? " · " + esc(nFolders(sub)) : ""}</small></span></button>
@@ -223,13 +243,17 @@
     function ruleRow(r) {
       const row = document.createElement("div");
       row.className = "prp-item prp-rule";
+      row.dataset.kind = "r"; row.dataset.id = r.id;
+      if (canDrag) row.draggable = true;
       const where = query ? `<small class="prp-where">${esc(M.pathText(d, r.f))}</small>` : "";
       row.innerHTML = `<input type="checkbox" class="prp-check" aria-label="Выбрать правило"${sel.rules.has(r.id) ? " checked" : ""}>
         <button class="prp-open"><span class="prp-main"><span class="prp-ws"><b>${esc(r.w)}</b> → ${esc(r.s)}</span>
           <small>${r.c ? '<span class="prp-aa" title="Учитывать регистр">Аа</span> · ' : ""}${esc(scopeText(r))}</small>${where}</span></button>
-        <button class="icon-btn prp-play" title="Прослушать" aria-label="Прослушать">▶</button>`;
+        <button class="icon-btn prp-play" title="Прослушать" aria-label="Прослушать">▶</button>
+        <button class="icon-btn prp-more" title="Действия с правилом" aria-label="Действия с правилом">⋯</button>`;
       const box = row.querySelector(".prp-check");
       box.onchange = () => check("r", r.id, box.checked);
+      row.querySelector(".prp-more").onclick = () => ruleMenu(r);
       row.querySelector(".prp-open").onclick = () => {
         if (selecting) { box.checked = !box.checked; check("r", r.id, box.checked); return; }
         ruleModal(r);
@@ -249,6 +273,58 @@
     }
 
     function go(id) { cur = id; render(); list.scrollTop = 0; }
+
+    // ----- выбор долгим нажатием (касание; как в Telegram) -----
+    if (window.longPress) window.longPress(list, ".prp-folder, .prp-rule", (item) => {
+      const set = item.dataset.kind === "f" ? sel.folders : sel.rules, id = item.dataset.id;
+      if (!selecting) { set.add(id); setSelecting(true); return; }
+      if (set.has(id)) set.delete(id); else set.add(id);
+      render();
+    });
+
+    // ----- перетаскивание мышью: правила и папки — на папку, «..» или звено пути -----
+    let dragging = null;
+    const dropTo = (e) => {
+      const t = e.target.closest("[data-drop]");
+      if (!t || !root.contains(t) || !dragging) return undefined;
+      const to = t.dataset.drop || null;
+      if (dragging.folders.some((id) => !M.canMoveFolder(d, id, to))) return undefined;   // в себя / во вложенную
+      return { t, to };
+    };
+    const clearOver = () => root.querySelectorAll(".drop-over").forEach((x) => x.classList.remove("drop-over"));
+    list.addEventListener("dragstart", (e) => {
+      const item = e.target.closest(".prp-folder, .prp-rule");
+      if (!item) return;
+      const kind = item.dataset.kind, id = item.dataset.id;
+      const inSel = selecting && (kind === "f" ? sel.folders : sel.rules).has(id);
+      dragging = inSel ? selection() : { rules: kind === "r" ? [id] : [], folders: kind === "f" ? [id] : [] };
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", kind === "r" ? (d.rules.find((r) => r.id === id) || {}).w || "" : ""); } catch (_) {}
+      setTimeout(() => item.classList.add("dragging"), 0);
+    });
+    list.addEventListener("dragend", () => { dragging = null; clearOver(); root.querySelectorAll(".dragging").forEach((x) => x.classList.remove("dragging")); });
+    root.addEventListener("dragover", (e) => {
+      const r = dropTo(e);
+      clearOver();
+      if (!r) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      r.t.classList.add("drop-over");
+    });
+    root.addEventListener("dragleave", (e) => { if (!root.contains(e.relatedTarget)) clearOver(); });
+    root.addEventListener("drop", async (e) => {
+      const r = dropTo(e);
+      clearOver();
+      if (!r) return;
+      e.preventDefault();
+      const what = dragging;
+      dragging = null;
+      try { M.moveSelected(d, what, r.to); } catch (err) { ctx.toast(err.message, 3500); return; }
+      if (selecting) setSelecting(false);
+      await commit();
+      const n = what.rules.length + what.folders.length;
+      ctx.toast((n > 1 ? `Перемещено: ${n} — ` : "Перемещено ") + whereTo(r.to), 2500);
+    });
 
     // ----- «Назад» и закрытие -----
     let finish;
@@ -305,7 +381,7 @@
       try { M.moveSelected(d, selection(), to); } catch (e) { ctx.toast(e.message, 3500); return; }
       setSelecting(false);
       await commit();
-      ctx.toast("Перемещено в «" + M.pathText(d, to) + "»", 2500);
+      ctx.toast("Перемещено " + whereTo(to), 2500);
     };
     $q(".prp-g-del").onclick = async () => {
       const n = M.selectedRules(d, selection()).length, k = sel.folders.size;
@@ -328,10 +404,13 @@
       p.finally(() => { if (tok === modalSeq) box.classList.remove("pr-open"); });
       const body = ctx.askEl.body;
       // кнопки (▶, «Аа») не забирают фокус у поля ввода: на телефоне иначе прячется клавиатура и окно сдвигается
-      body.addEventListener("pointerdown", (e) => {
-        const a = document.activeElement;
-        if (a && a.matches && a.matches(".pr-w, .pr-s, .pr-name") && e.target.closest(".pr-play, .pr-case")) e.preventDefault();
-      });
+      if (!body.dataset.prFocus) {
+        body.dataset.prFocus = "1";
+        body.addEventListener("pointerdown", (e) => {
+          const a = document.activeElement;
+          if (a && a.matches && a.matches(".pr-w, .pr-s, .pr-name") && e.target.closest(".pr-play, .pr-case")) e.preventDefault();
+        });
+      }
       return { p, body };
     }
     // предупреждение при выходе без сохранения (плашка вверху окна)
@@ -356,7 +435,7 @@
 
     // список папок для выбора (дерево по алфавиту), кроме exclude
     function folderOptions(selected, exclude) {
-      const out = [`<option value=""${selected === null ? " selected" : ""}>Верхний уровень</option>`];
+      const out = [`<option value=""${selected === null ? " selected" : ""}>Корневая папка</option>`];
       const walk = (parent, depth) => {
         M.level(d, parent).folders.forEach((f) => {
           if (exclude && exclude.has(f.id)) return;
@@ -500,7 +579,7 @@
       const html = `<div class="pr pr-edit">
         ${unsavedBar("Изменения не сохранятся, если выйти сейчас: папка не запишется.")}
         <label class="pr-field"><span class="pr-label">Название папки</span>
-          <input class="pr-name" maxlength="80" value="${esc(init)}" placeholder="например, Ранобэ" autocomplete="off"></label>
+          <input class="pr-name" maxlength="80" value="${esc(init)}" placeholder="например, Классика" autocomplete="off"></label>
         <div class="pr-hint">${isNew ? "Папка будет создана в: " + esc(M.pathText(d, parent)) : "Папка лежит в: " + esc(M.pathText(d, parent))}</div>
         <div class="pr-err" hidden></div>
         <div class="pr-foot"><button class="set-btn pr-cancel">Отмена</button><button class="set-btn primary pr-save" disabled>Сохранить</button></div>
@@ -530,7 +609,7 @@
       await m.p;
     }
 
-    // выбор папки → id | null (верхний уровень) | undefined (отмена)
+    // выбор папки → id | null (корневая папка) | undefined (отмена)
     async function pickFolder(title, okLabel, exclude, selected) {
       const html = `<div class="pr pr-edit">
         <label class="pr-field"><span class="pr-label">Папка</span><select class="pr-folder">${folderOptions(selected === undefined ? null : selected, exclude)}</select></label>
@@ -546,9 +625,9 @@
       return v && typeof v === "object" ? v.to : undefined;
     }
     // «Где применяется» для группы → books | undefined (отмена)
-    async function scopeModal(title, books) {
+    async function scopeModal(title, books, whom) {
       const html = `<div class="pr pr-edit">
-        <div class="pr-hint">Настройка заменит «где применяется» у всех выбранных правил.</div>
+        <div class="pr-hint">Настройка заменит «где применяется» ${esc(whom || "у всех выбранных правил")}.</div>
         ${scopeHtml("prgsc", books)}
         <div class="pr-foot"><button class="set-btn pr-cancel">Отмена</button><button class="set-btn primary pr-save">Применить</button></div>
       </div>`;
@@ -560,22 +639,57 @@
       return v && typeof v === "object" ? v.books : undefined;
     }
 
-    // ----- папка: меню «⋯» -----
+    // ----- меню «⋯» (компактный список; закрыть — ✕, фон, «Назад») -----
+    async function menu(title, info, items) {
+      const html = `<div class="pr-menu">${info ? `<div class="pr-hint">${info}</div>` : ""}
+        ${items.map((it, i) => `<button class="pr-mi${it.danger ? " danger" : ""}" data-i="${i}">${esc(it.label)}</button>`).join("")}</div>`;
+      const m = modal(title, html);
+      ctx.askEl.box.classList.add("pr-small");
+      m.p.finally(() => ctx.askEl.box.classList.remove("pr-small"));
+      m.body.querySelectorAll(".pr-mi").forEach((b) => (b.onclick = () => ctx.askFinish({ v: items[Number(b.dataset.i)].value })));
+      const r = await m.p;
+      return r && typeof r === "object" ? r.v : null;
+    }
+    async function ruleMenu(r) {
+      const act = await menu(`${r.w} → ${r.s}`, esc(M.pathText(d, r.f)), [
+        { label: "Изменить", value: "edit" },
+        { label: "Удалить", value: "delete", danger: true },
+      ]);
+      if (act === "edit") return ruleModal(r);
+      if (act === "delete") {
+        const ok = await ctx.ask(`Удалить правило «${r.w}»?`, `<p>${esc(r.w)} → ${esc(r.s)}</p>`,
+          [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, value: 1 }]);
+        if (!ok) return;
+        M.removeRule(d, r.id);
+        await commit();
+      }
+    }
     async function folderMenu(f) {
       const n = M.rulesIn(d, f.id).length;
-      const act = await ctx.ask(`Папка «${f.name}»`, `<p class="pr-hint">${esc(nRules(n))} · лежит в «${esc(M.pathText(d, f.parent))}»</p>`, [
+      const act = await menu(`Папка «${f.name}»`, `${esc(nRules(n))} · лежит ${esc(whereTo(f.parent))}`, [
+        { label: "Открыть", value: "open" },
         { label: "Переименовать", value: "rename" },
+        { label: "Где применяется (все правила)…", value: "books" },
         { label: "Переместить…", value: "move" },
-        { label: "Удалить…", value: "delete" },
-        { label: "Отмена", value: null },
+        { label: "Удалить…", value: "delete", danger: true },
       ]);
+      if (act === "open") { query = ""; search.value = ""; return go(f.id); }
       if (act === "rename") return folderModal(f);
+      if (act === "books") {
+        if (!n) { ctx.toast("В папке нет правил", 2500); return; }
+        const first = M.rulesIn(d, f.id)[0];
+        const books = await scopeModal(`Где применяется — ${nRules(n)} в «${f.name}»`, first.books, "у всех правил папки (и вложенных папок)");
+        if (books === undefined) return;
+        const k = M.setBooksFor(d, { folders: [f.id] }, books);
+        await commit();
+        ctx.toast(`Изменено: ${nRules(k)}`, 2500);
+      }
       if (act === "move") {
         const to = await pickFolder(`Переместить «${f.name}»`, "Переместить", M.subtree(d, f.id), f.parent);
         if (to === undefined || to === f.parent) return;
         try { M.moveFolder(d, f.id, to); } catch (e) { ctx.toast(e.message, 3500); return; }
         await commit();
-        ctx.toast("Перемещено в «" + M.pathText(d, to) + "»", 2500);
+        ctx.toast("Перемещено " + whereTo(to), 2500);
       }
       if (act === "delete") return deleteFolder(f);
     }
@@ -589,12 +703,10 @@
         return commit();
       }
       const inside = [n ? nRules(n) : "", k ? (k === 1 ? "1 вложенная папка" : `вложенных папок: ${k}`) : ""].filter(Boolean).join(", ");
-      const up = M.pathText(d, f.parent);
-      const act = await ctx.ask(`Удалить папку «${f.name}»?`, `<p>В папке: ${esc(inside)}. Что сделать с содержимым?</p>`, [
-        { label: `Удалить вместе с содержимым (${nRules(n)})`, value: "all" },
-        { label: `Перенести содержимое выше — в «${up}»`, value: "up" },
+      const act = await menu(`Удалить папку «${f.name}»?`, `В папке: ${esc(inside)}. Что сделать с содержимым?`, [
+        { label: `Перенести содержимое выше — ${whereTo(f.parent)}`, value: "up" },
         { label: "Перенести содержимое в папку…", value: "to" },
-        { label: "Отмена", value: null },
+        { label: `Удалить вместе с содержимым (${nRules(n)})`, value: "all", danger: true },
       ]);
       if (!act) return;
       if (act === "to") {
@@ -643,7 +755,7 @@
         return;
       }
       const lines = changed.slice(0, 50).map((x) => {
-        const p = x.now.path.length ? x.now.path.join(" › ") : "Верхний уровень";
+        const p = x.now.path.length ? x.now.path.join(" › ") : "Корневая папка";
         const moved = M.path(d, x.old.f).map((f) => f.name).join("\n").toLowerCase() !== where(x);
         const parts = [];
         if (x.old.w !== x.now.w || x.old.s !== x.now.s) parts.push(`${esc(x.old.w)} → ${esc(x.old.s)} <b>⇒</b> ${esc(x.now.w)} → ${esc(x.now.s)}`);
