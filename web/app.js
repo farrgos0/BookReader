@@ -1849,7 +1849,8 @@ window.addEventListener("error", (e) => {
       else if (r.done) { cls = "part"; text = `◐ Загружено ${pct}% · ${name}`; title = "Загружена часть: остальное — с сервера"; }
       if (r.error && !r.running) { cls = "err"; text = `⚠ ${pct ? pct + "% · " : ""}ошибка загрузки`; title = r.error; }
       const upd = (r.stale || 0) + (r.unknown || 0);
-      if (upd && !r.running) { text += " · ↻"; title += `. Ожидает обновления фраз: ${upd} — «Озвучка без интернета»`; }
+      if (typeof r.checking === "number") { text += ` · ↻ проверка ${r.checking}%`; title += ". Идёт проверка: не изменилось ли звучание после правок"; }
+      else if (upd && !r.running) { text += " · ↻"; title += `. Ожидает обновления фраз: ${upd} — «Озвучка без интернета»`; }
       const more = rowsOf(id).filter((x) => x !== r && (x.done > 0 || x.running || x.queued)).length;
       if (more) { text += ` +${more}`; title += `. Других озвучек: ${more} — список в окне «Озвучка без интернета»`; }
     }
@@ -1935,11 +1936,20 @@ window.addEventListener("error", (e) => {
     else if (r.done >= r.total) text = `✓ Загружено 100% · ${name} (${fmtSize(r.bytes || 0)}) — сервер для чтения не нужен.`;
     else text = `Загружено ${pct}% · ${name} (${r.done} из ${r.total} фраз, ${fmtSize(r.bytes || 0)}). Остальное — с сервера.`;
     if (r && r.error) text += ` ⚠ ${r.error}`;
+    // качается другой голос этой книги — показать и его прогресс
+    const other = rowsOf(bookId).find((x) => x.voice !== voice && (x.running || x.queued));
+    if (other) {
+      const jp = other.jobTotal ? Math.floor((other.jobDone / other.jobTotal) * 100) : 0;
+      text += other.running
+        ? ` Сейчас загружается: Озвучка — ${voiceName(other.voice)}, ${jp}% выбранного (${other.jobDone} из ${other.jobTotal})${other.paused ? ", пауза: нет связи" : ""}.`
+        : ` В очереди: Озвучка — ${voiceName(other.voice)}.`;
+    }
     if (offlineMode) text = "Включён режим «Без сервера»: загружать не с чего. " + text;
     el.dlText.textContent = text;
     updateRefresh(r);
     el.dlListen.hidden = !running && !(r && r.done);
     el.dlStart.hidden = running;
+    el.dlStart.querySelector("span").textContent = r && r.done > 0 && r.done < r.total ? "Продолжить" : "Скачать";
     el.dlStart.disabled = offlineMode;
     // «Остановить» — если у книги идёт или ждёт любая загрузка (другим голосом, из общей очереди — тоже)
     el.dlStop.hidden = !rowsOf(bookId).some((x) => x.running || x.queued);
@@ -1952,6 +1962,16 @@ window.addEventListener("error", (e) => {
   function updateRefresh(r) {
     const box = $("dlUpd");
     const stale = (r && r.stale) || 0, unknown = (r && r.unknown) || 0;
+    const checking = r && typeof r.checking === "number" ? r.checking : -1;
+    if (checking >= 0) {
+      // сверка идёт (на большой книге — секунды): показать, чтобы не решили, что изменений нет
+      box.hidden = false;
+      box.querySelector(".dl-upd-text").innerHTML = `<p><b>↻ Проверяю, не изменилось ли звучание после правок… ${checking}%</b></p>
+        <p class="dl-upd-hint">Фразы озвучки сравниваются с текущими правилами произношения и версией сервера. Можно закрыть окно — проверка идёт в фоне.</p>`;
+      $("dlRefresh").hidden = true;
+      return;
+    }
+    $("dlRefresh").hidden = false;
     box.hidden = !r || r.running || r.queued || !(stale + unknown);
     if (box.hidden) return;
     const n = (k) => `${k.toLocaleString("ru")} ${plural(k, "фраза", "фразы", "фраз")}`;
@@ -1996,11 +2016,13 @@ window.addEventListener("error", (e) => {
     box.innerHTML = `<div class="dl-packs-head">Озвучки этой книги (${rows.length})</div>` + rows.map((r) => {
       const pct = r.total ? Math.floor((r.done / r.total) * 100) : 0;
       const upd = (r.stale || 0) + (r.unknown || 0);
-      const st = r.running ? "загружается" : r.queued ? "в очереди" : r.error ? "⚠ остановлена"
+      const jp = r.jobTotal ? Math.floor((r.jobDone / r.jobTotal) * 100) : 0;
+      const st = r.running ? `загружается ${jp}% выбранного (${r.jobDone} из ${r.jobTotal})` : r.queued ? "в очереди"
+        : typeof r.checking === "number" ? `↻ проверка ${r.checking}%` : r.error ? "⚠ остановлена"
         : upd ? `↻ ожидает обновления: ${upd}` : pct >= 100 ? "✓" : "";
       const isCur = r.voice === el.voice.value;
-      return `<div class="dl-pack${isCur ? " cur" : ""}" data-voice="${esc(r.voice)}">
-        <div class="dl-pack-info"><b>Озвучка — ${esc(voiceName(r.voice))}</b>${isCur ? ' <span class="dl-pack-tag">сейчас</span>' : ""}
+      return `<div class="dl-pack${isCur ? " cur" : ""}${r.voice === el.dlVoice.value ? " picked" : ""}" data-voice="${esc(r.voice)}">
+        <div class="dl-pack-info" data-pact="pick" title="Выбрать эту озвучку"><b>Озвучка — ${esc(voiceName(r.voice))}</b>${isCur ? ' <span class="dl-pack-tag">сейчас</span>' : ""}
           <small>Загружено ${pct}% · ${fmtSize(r.bytes || 0)}${st ? " · " + st : ""}</small></div>
         <button class="dl-pack-btn" data-pact="listen" title="Слушать этой озвучкой">▶</button>
         ${r.running || r.queued
@@ -2040,6 +2062,11 @@ window.addEventListener("error", (e) => {
     const btn = e.target.closest("[data-pact]");
     if (!btn) return;
     const v = btn.closest(".dl-pack").dataset.voice;
+    if (btn.dataset.pact === "pick") {
+      // выбрать эту озвучку в окне (голос сверху меняется тоже): дальше — «Продолжить», «Обновить», «Слушать»
+      if (el.dlVoice.value !== v) { el.dlVoice.value = v; el.dlVoice.onchange(); }
+      return;
+    }
     if (btn.dataset.pact === "stop") {
       await Native.Audio.cancel(bookId);
       toast("Загрузка остановлена — скачанное сохранено");

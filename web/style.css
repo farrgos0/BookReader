@@ -809,3 +809,7 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .dl-upd-hint { color: var(--muted); font-size: 12.5px; }
 .dl-upd .set-btn { align-self: flex-start; padding: 0 16px; }
 @media (max-width: 360px) { .sel-bar { gap: 2px; padding: 8px 6px; } .sel-btn { min-width: 44px; padding: 4px 2px; font-size: 10.5px; } }
+.dl-pack-info[data-pact="pick"] { cursor: pointer; border-radius: 6px; }
+.dl-pack:not(.cur) .dl-pack-info[data-pact="pick"]:hover b { text-decoration: underline; }
+#dlRefresh[hidden] { display: none; }
+.dl-pack.picked { background: var(--hl-soft); border-radius: 8px; box-shadow: inset 3px 0 0 var(--accent); padding-left: 10px; padding-right: 4px; margin: 0 -4px; }
