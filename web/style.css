@@ -799,3 +799,4 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .prp .sel-btn { min-width: 46px; padding: 4px 3px; }
 .prp-tools .prp-select.on { color: var(--accent); background: var(--hl-soft); border-color: var(--accent); }
 .prp .sel-count small { display: block; font-weight: 400; color: var(--muted); font-size: 11.5px; }
+.prp-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

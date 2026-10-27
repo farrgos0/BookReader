@@ -128,7 +128,7 @@
       <div class="prp-list"></div>
       <div class="sel-bar prp-selbar" hidden>
         <button class="sel-btn prp-g-done" title="Отменить выбор" aria-label="Отменить выбор"><svg><use href="#i-x"/></svg><span>Отмена</span></button>
-        <span class="sel-count prp-count"></span>
+        <span class="sel-count" aria-hidden="true"></span>
         <button class="sel-btn prp-all" title="Выбрать все" aria-label="Выбрать все"><svg><use href="#i-all"/></svg><span>Все</span></button>
         <button class="sel-btn prp-g-books" title="Где применяется…" aria-label="Где применяется" disabled><svg><use href="#i-books"/></svg><span>Книги</span></button>
         <button class="sel-btn prp-g-move" title="Переместить…" aria-label="Переместить" disabled><svg><use href="#i-move"/></svg><span>Перенести</span></button>
@@ -192,8 +192,9 @@
     }
     function updateSel() {
       const n = M.selectedRules(d, selection()).length, k = sel.folders.size;
-      // «Выбрано: N» — отмеченные строки; если среди них папки — ниже мелко, сколько правил это затронет
-      $q(".prp-count").innerHTML = `Выбрано: ${sel.rules.size + k}` + (k ? `<small>${esc(nRules(n))}</small>` : "");
+      // «Выбрано: N» — в заголовке страницы (как в Telegram): в панели внизу ему не хватает места.
+      // Если среди отмеченных есть папки — рядом, сколько правил это затронет (вместе с вложенными).
+      $q(".prp-title").textContent = selecting ? `Выбрано: ${sel.rules.size + k}` + (k ? ` · ${nRules(n)}` : "") : "Произношение";
       const any = sel.rules.size + sel.folders.size > 0;
       $q(".prp-g-books").disabled = !n;
       $q(".prp-g-move").disabled = !any;
@@ -482,10 +483,10 @@
         ${unsavedBar("Изменения не сохранятся, если выйти сейчас: правило не запишется.")}
         <label class="pr-field"><span class="pr-label">Слово как в книге</span>
           <input class="pr-w" placeholder="например, гг" maxlength="60" value="${esc(init.w)}" autocomplete="off" autocapitalize="off"></label>
-        <label class="pr-case"><input type="checkbox"${init.c ? " checked" : ""}><span><b>Аа</b> — учитывать регистр</span></label>
+        <label class="pr-case" data-keepkb><input type="checkbox"${init.c ? " checked" : ""}><span><b>Аа</b> — учитывать регистр</span></label>
         <div class="pr-field"><span class="pr-label">Как звучит <small>(+ перед ударной гласной)</small></span>
           <div class="pr-line"><input class="pr-s" placeholder="например, главный герой" maxlength="200" value="${esc(init.s)}" autocomplete="off" autocapitalize="off" aria-label="Как звучит">
-          <button class="icon-btn pr-play" title="Прослушать" aria-label="Прослушать">▶</button></div></div>
+          <button class="icon-btn pr-play" data-keepkb title="Прослушать" aria-label="Прослушать">▶</button></div></div>
         <div class="pr-err" hidden></div>
         <label class="pr-field"><span class="pr-label">Папка</span><select class="pr-folder">${folderOptions(init.f)}</select></label>
         ${scopeHtml("prsc", init.books)}

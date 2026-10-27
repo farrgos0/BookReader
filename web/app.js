@@ -2462,9 +2462,25 @@ window.addEventListener("error", (e) => {
     if (isField(a)) { a.blur(); return true; }
     return false;
   }
-  // нажатие на свободное место прячет клавиатуру (WebView сам это делает не всегда)
+  // Касание мимо поля ввода прячет клавиатуру — но только ПОСЛЕ того, как касание сработало.
+  // Если прятать её в момент нажатия (так делает и сам браузер, перенося фокус), экран растёт, окно сдвигается,
+  // и к моменту, когда палец отпущен, под ним уже другой элемент: нажимали «Отмена» — попали в «Только в
+  // выбранных книгах». Поэтому фокус в момент нажатия не отдаём (preventDefault), а убираем после клика.
+  // Поля ввода, выпадающие списки и ползунки работают как обычно.
+  const textTarget = (t) => t.closest("textarea, select, [contenteditable], input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset])");
+  let blurAfterTap = null;
   document.addEventListener("pointerdown", (e) => {
-    if (isField(document.activeElement) && !e.target.closest("input, textarea, select, label, [contenteditable]")) document.activeElement.blur();
+    blurAfterTap = null;
+    const a = document.activeElement;
+    if (!isField(a) || !e.target.closest || textTarget(e.target)) return;
+    e.preventDefault();          // клавиатура остаётся, пока касание не сработает; прокрутка при этом работает
+    if (!e.target.closest("[data-keepkb]")) blurAfterTap = a;   // ▶ и «Аа» у правила — клавиатура остаётся совсем
+  }, true);
+  document.addEventListener("click", () => {
+    const a = blurAfterTap;
+    blurAfterTap = null;
+    // после обработчиков клика: если он сам не перевёл фокус в другое поле — прячем клавиатуру
+    if (a) setTimeout(() => { if (document.activeElement === a) a.blur(); }, 0);
   }, true);
   // «Готово»/Enter на клавиатуре в полях поиска — убрать клавиатуру
   document.addEventListener("keydown", (e) => {
