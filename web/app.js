@@ -1462,8 +1462,9 @@ window.addEventListener("error", (e) => {
 
   function sortedBooks() {
     const q = el.libSearch.value.trim().toLowerCase();
-    let list = libCache.filter((m) => !q || (m.title + " " + (m.authors || []).join(" ") + " " + m.name).toLowerCase().includes(q));
     const by = el.libSort.value;
+    let list = libCache.filter((m) => (!q || (m.title + " " + (m.authors || []).join(" ") + " " + m.name).toLowerCase().includes(q))
+      && (by !== "fav" || m.favorite));   // «★ Избранные» — только отмеченные звёздочкой, недавние сверху
     const coll = new Intl.Collator("ru");
     if (by === "title") list.sort((a, b) => coll.compare(a.title, b.title));
     else if (by === "author") list.sort((a, b) => coll.compare((a.authors || [])[0] || "яя", (b.authors || [])[0] || "яя") || coll.compare(a.title, b.title));
@@ -1496,6 +1497,8 @@ window.addEventListener("error", (e) => {
         </span>
       </button>
       <button class="icon-btn lib-more" data-act="menu" title="Действия" aria-label="Действия">⋯</button>
+      <button class="icon-btn lib-fav${m.favorite ? " on" : ""}" data-act="fav" aria-pressed="${m.favorite ? "true" : "false"}"
+        title="${m.favorite ? "Убрать из избранного" : "В избранное"}" aria-label="${m.favorite ? "Убрать из избранного" : "В избранное"}"><svg><use href="#i-star"/></svg></button>
       <div class="lib-actions" hidden>${mainMenuHtml()}</div>
     </div>`;
   }
@@ -1508,7 +1511,8 @@ window.addEventListener("error", (e) => {
     if (list.length) libVL.set(list.map((m, i) => ({ key: m.id, est: 92, html: bookCard(m).replace('<div class="lib-item', `<div data-vi="${i}" class="lib-item`) })));
     else {
       libVL.set([]);
-      el.libList.innerHTML = `<div class="lib-empty">${libCache.length ? "Ничего не найдено" : "Библиотека пуста.<br>Добавьте книги кнопкой «Добавить» или перетащите файлы в окно."}</div>`;
+      el.libList.innerHTML = `<div class="lib-empty">${libCache.length ? (el.libSort.value === "fav" && !el.libSearch.value.trim()
+        ? "Избранных книг пока нет.<br>Отметьте книгу звёздочкой ☆ справа." : "Ничего не найдено") : "Библиотека пуста.<br>Добавьте книги кнопкой «Добавить» или перетащите файлы в окно."}</div>`;
     }
     // недавние на стартовом экране
     const recent = [...libCache].sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0)).slice(0, 8);
@@ -1563,6 +1567,15 @@ window.addEventListener("error", (e) => {
         if (id !== bookId) await openFromLibrary(id);
         if (id === bookId) { closePanels(); openDl(); }
         return;
+      case "fav": {
+        if (!meta) return;
+        const on = !meta.favorite;
+        try { await Library.update(id, { favorite: on }); } catch (err) { toast("Не получилось: " + err.message, 3500); return; }
+        meta.favorite = on;
+        renderLibrary();   // виртуальный список хранит разметку строк; в «★ Избранные» книга уходит из списка
+        toast(on ? "Добавлено в избранное" : "Убрано из избранного", 1800);
+        return;
+      }
       case "menu":
         el.libList.querySelectorAll(".lib-actions").forEach((a) => { if (a !== actions) a.hidden = true; });
         actions.hidden = !actions.hidden;

@@ -217,7 +217,7 @@
       row.className = "prp-item prp-up";
       row.dataset.drop = parent === null ? "" : parent;
       row.innerHTML = `<button class="prp-open"><span class="prp-ico up" aria-hidden="true"></span>
-        <span class="prp-main"><b>..</b><small>Наверх — ${esc(whereTo(parent))}</small></span></button>`;
+        <span class="prp-main"><b>...</b><small>Наверх — ${esc(whereTo(parent))}</small></span></button>`;
       row.querySelector(".prp-open").onclick = () => go(parent);
       return row;
     }
@@ -282,7 +282,7 @@
       render();
     });
 
-    // ----- перетаскивание мышью: правила и папки — на папку, «..» или звено пути -----
+    // ----- перетаскивание мышью: правила и папки — на папку, «...» или звено пути -----
     let dragging = null;
     const dropTo = (e) => {
       const t = e.target.closest("[data-drop]");
@@ -653,9 +653,17 @@
     async function ruleMenu(r) {
       const act = await menu(`${r.w} → ${r.s}`, esc(M.pathText(d, r.f)), [
         { label: "Изменить", value: "edit" },
+        { label: "Переместить…", value: "move" },
         { label: "Удалить", value: "delete", danger: true },
       ]);
       if (act === "edit") return ruleModal(r);
+      if (act === "move") {
+        const to = await pickFolder(`Переместить «${r.w}»`, "Переместить", null, r.f);
+        if (to === undefined || to === r.f) return;
+        M.moveSelected(d, { rules: [r.id], folders: [] }, to);
+        await commit();
+        ctx.toast("Перемещено " + whereTo(to), 2500);
+      }
       if (act === "delete") {
         const ok = await ctx.ask(`Удалить правило «${r.w}»?`, `<p>${esc(r.w)} → ${esc(r.s)}</p>`,
           [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, value: 1 }]);

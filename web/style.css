@@ -788,3 +788,10 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .pr-mi:hover, .pr-mi:focus-visible { background: var(--hl-soft); }
 .pr-mi.danger { color: #c0392b; }
 .prp-open, .pr-mi, .prp-item .icon-btn { -webkit-tap-highlight-color: transparent; }
+
+/* библиотека: избранное (звёздочка) */
+.lib-fav { position: absolute; top: 44px; right: 6px; min-width: 32px; height: 32px; padding: 0; color: var(--muted); }
+.lib-fav svg { width: 20px; height: 20px; fill: none; }
+.lib-fav.on { color: #e0a800; }
+.lib-fav.on svg { fill: #f5c518; }
+.selecting .lib-fav { display: none; }
