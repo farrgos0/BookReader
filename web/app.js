@@ -663,6 +663,7 @@ window.addEventListener("error", (e) => {
 
   // начать слушать с i (с запоминанием, откуда ушли)
   function readFrom(i) {
+    if (!modeAllows("tts")) return;
     const from = cur, wasPlaying = playing;
     setPick(-1);
     playFrom(i);
@@ -2371,6 +2372,7 @@ window.addEventListener("error", (e) => {
       closeDl();
     }
     syncPlayerHeight();             // плеер скрыт — отступ снизу под него не нужен
+    if (isPaged() && segs.length) layoutPaged(layoutAnchor());   // страницы — заново под новую высоту (иначе пустое место внизу)
     renderLibrary();                // значки озвучки у книг
   }
   async function setMode(mode, quiet) {
@@ -3347,6 +3349,7 @@ window.addEventListener("error", (e) => {
   let lastTap = { i: -1, t: 0 }, lastRead = { i: -1, t: 0 }, textTapsOffUntil = 0;
   function suppressTextTaps(ms) { textTapsOffUntil = Date.now() + ms; lastTap = { i: -1, t: 0 }; }
   function readByDoubleTap(i) {
+    if (!modeAllows("tts")) return;                  // автономный режим: двойное касание ничего не делает
     if (lastRead.i === i && Date.now() - lastRead.t < 600) return;   // dblclick после своего распознавания — второй раз не читаем
     lastRead = { i, t: Date.now() };
     window.getSelection().removeAllRanges();
