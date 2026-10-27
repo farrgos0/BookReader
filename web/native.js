@@ -165,6 +165,9 @@
     status: async () => (await json("PreloadStatus")) || [],   // [{ bookId, voice, total, done, bytes, running, queued, jobDone, jobTotal, error, stale, unknown }]
     start: (bookId, title, voice, from, to) => call("PreloadStart", bookId, title, voice, from, to),
     cancel: (bookId) => call("PreloadCancel", bookId),
+    // «Освободить место»: сколько занимает лишнее и удалить отмеченное ({ orphans, outdated, temp, all })
+    cleanInfo: () => jsonAsync("AudioCleanInfoAsync"),
+    clean: (opts) => jsonAsync("AudioCleanAsync", JSON.stringify(opts)),
     // «Обновить»: заново — устаревшие фразы и скачанные до 1.2.0; true — поставлено в загрузку, false — нечего
     refresh: async (bookId, title, voice) => (await call("PreloadRefresh", bookId, title, voice)) === "1",
     remove: (bookId, voice) => call("PreloadDelete", bookId, voice),

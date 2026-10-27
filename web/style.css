@@ -813,3 +813,9 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .dl-pack:not(.cur) .dl-pack-info[data-pact="pick"]:hover b { text-decoration: underline; }
 #dlRefresh[hidden] { display: none; }
 .dl-pack.picked { background: var(--hl-soft); border-radius: 8px; box-shadow: inset 3px 0 0 var(--accent); padding-left: 10px; padding-right: 4px; margin: 0 -4px; }
+/* «Освободить место» (настройки приложения) */
+.sp { display: flex; flex-direction: column; gap: 10px; }
+.sp-opt { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 14px; line-height: 1.4; }
+.sp-opt input { accent-color: var(--accent); width: 20px; height: 20px; flex: none; margin: 1px 0 0; }
+.sp-opt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.sp-opt.off { opacity: .5; }

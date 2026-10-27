@@ -2463,6 +2463,43 @@ window.addEventListener("error", (e) => {
     pronApplied();
   };
 
+  // «Освободить место» (приложение): скачанная озвучка, которая больше не нужна
+  $("btnSpace").onclick = async () => {
+    if (!Native || !Native.Audio.cleanInfo) return toast("Обновите приложение");
+    let info;
+    try { info = await Native.Audio.cleanInfo(); } catch (e) { return toast("Не получилось посчитать: " + e.message, 4000); }
+    const n = (k, a, b, c) => `${k.toLocaleString("ru")} ${plural(k, a, b, c)}`;
+    const opt = (id, on, title, size, hint, disabled) => `<label class="sp-opt${disabled ? " off" : ""}"><input type="checkbox" id="${id}"${on && !disabled ? " checked" : ""}${disabled ? " disabled" : ""}>
+      <span><b>${title}</b> — ${size}${hint ? `<small>${hint}</small>` : ""}</span></label>`;
+    const html = `<div class="sp">
+      <p class="pr-hint">Всего скачанной озвучки: <b>${fmtSize(info.totalBytes || 0)}</b>. Книги и прогресс чтения не удаляются.</p>
+      ${opt("spOrphans", true, "Озвучка книг, которых нет в библиотеке", info.orphanBooks ? `${n(info.orphanBooks, "книга", "книги", "книг")}, ${fmtSize(info.orphanBytes)}` : "нет", "", !info.orphanBooks)}
+      ${opt("spTemp", true, "Недописанные и временные файлы", info.tempBytes ? fmtSize(info.tempBytes) : "нет", "остались после обрывов связи", !info.tempBytes)}
+      ${opt("spOutdated", false, "Старый вариант фраз, ожидающих обновления", info.outdatedPhrases ? `${n(info.outdatedPhrases, "фраза", "фразы", "фраз")}, ${fmtSize(info.outdatedBytes)}` : "нет",
+        "в том числе скачанных до 1.2.0. Эти фразы будут звучать с сервера — уже с текущими правилами; без сервера их не будет", !info.outdatedPhrases)}
+      ${opt("spAll", false, "Вся скачанная озвучка", fmtSize(info.totalBytes || 0), "книги останутся, озвучку можно скачать заново" + (info.busy ? "; идущие загрузки будут остановлены" : ""), !info.totalBytes)}
+      ${info.busy ? '<p class="pr-hint">Озвучка, которая сейчас загружается, не удаляется (кроме «Вся скачанная озвучка»).</p>' : ""}
+    </div>`;
+    const go = ask("Освободить место", html, [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, value: 1 }]);
+    const body = askEl.body, all = body.querySelector("#spAll");
+    const sync = () => body.querySelectorAll("#spOrphans, #spTemp, #spOutdated").forEach((x) => {
+      x.closest(".sp-opt").classList.toggle("off", all.checked || x.dataset.none === "1");
+    });
+    body.querySelectorAll("#spOrphans, #spTemp, #spOutdated").forEach((x) => { if (x.disabled) x.dataset.none = "1"; });
+    all.onchange = sync;
+    const ok = await go;
+    if (!ok) return;
+    const val = (id) => { const x = body.querySelector("#" + id); return !!(x && x.checked && !x.disabled); };
+    const opts = { all: val("spAll"), orphans: val("spOrphans"), temp: val("spTemp"), outdated: val("spOutdated") };
+    if (!opts.all && !opts.orphans && !opts.temp && !opts.outdated) return toast("Ничего не отмечено");
+    try {
+      const r = await Native.Audio.clean(opts);
+      toast(`Освобождено: ${fmtSize((r && r.freed) || 0)}`, 3500);
+    } catch (e) { toast("Не получилось: " + e.message, 4000); }
+    await refreshAudio();
+    renderUsage();
+  };
+
   $("btnLicense").onclick = () => ask("Лицензия BookReader", licenseHtml(), [{ label: "Закрыть", primary: true, value: 1 }]);
 
   // первый запуск приложения: соглашение → подключить сервер? → если нет, где это сделать
