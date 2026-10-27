@@ -22,7 +22,7 @@
     if (!s) return "пусто";
     if (/\d/.test(s)) return "цифры не принимаются — напишите словами";
     if (/[A-Za-z]/.test(s)) return "латиница не принимается — напишите русскими буквами";
-    if (!/^[А-Яа-яЁё+\- ]+$/.test(s)) return "можно только русские буквы, «ё», «+», пробел и дефис";
+    if (!/^[А-Яа-яЁё+,\- ]+$/.test(s)) return "можно только русские буквы, «ё», «+», запятая, пробел и дефис";
     if (s.includes("++")) return "два «+» подряд";
     if (new RegExp(`\\+(?![${VOWELS}])`).test(s)) return "«+» ставится перед ударной гласной";
     if (!/[А-Яа-яЁё]/.test(s)) return "нет букв";
@@ -30,7 +30,8 @@
   }
 
   const cleanW = (w) => String(w == null ? "" : w).trim();
-  const cleanS = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  // как ru_rules.tidy: без лишних пробелов, «так ,  как» → «так, как»
+  const cleanS = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ").replace(/(, )+/g, ", ").trim();
   const yo = (x) => x.replace(/ё/g, "е").replace(/Ё/g, "Е");
   const low = (x) => yo(x).toLowerCase();
 

@@ -79,6 +79,13 @@ test("сохранение: изменение того же правила не
   assert.strictEqual(r2.t, t);
   assert.strictEqual(d.rules[0].s, "гл+авный гер+ой");
 });
+test("запятая в «как звучит» — можно, пробелы приводятся в порядок", () => {
+  const d = M.empty();
+  const r = M.saveRule(d, { w: "т.к.", s: "так ,  как" });
+  assert.strictEqual(r.s, "так, как");
+  assert.strictEqual(M.checkSay("так, как"), "");
+  throws(() => M.saveRule(d, { w: "а", s: ", ," }), /нет букв/);
+});
 test("сохранение: неполное правило не сохраняется", () => {
   const d = M.empty();
   throws(() => M.saveRule(d, { w: "", s: "а" }), /Не указано слово/);

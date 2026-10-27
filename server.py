@@ -147,6 +147,7 @@ def clean_for_speech(text, options=None, pron=None):
     text = re.sub(r"[\[\]{}<>*#_`~|/\\]", " ", text)
     text = re.sub(r"[^\w\s.,!?:;—\-()\"'«»„“”+" + ru_rules.MARK + "]", " ", text)
     text = re.sub(r"\+(?![аеёиоуыэюяАЕЁИОУЫЭЮЯ])", " ", text)   # «+» остаётся только как ударение
+    text = re.sub(r",(?:[\s" + ru_rules.MARK + r"]*,)+", ",", text)   # «, ,» (запятая из правила рядом с запятой текста) — одна
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 

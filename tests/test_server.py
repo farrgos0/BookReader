@@ -114,6 +114,17 @@ class Rules(unittest.TestCase):
         for bad in ("5 раз", "ok", "з+мок", "а++б", "", "a/b"):
             self.assertIsNotNone(ru_rules.check_say(bad), bad)
 
+    def test_comma_pause(self):
+        """Запятая в «как звучит» — пауза; лишние пробелы и повторы запятых убираются."""
+        import ru_rules
+        self.assertIsNone(ru_rules.check_say("так, как"))
+        self.assertIsNotNone(ru_rules.check_say(", ,"))              # одних запятых мало — нужны буквы
+        self.assertEqual(ru_rules.tidy("так ,  как ,, вот"), "так, как, вот")
+        p = ru_rules.Pron([{"w": "т.к.", "s": "так ,как"}, {"w": "ну", "s": "ну,"}])
+        say = lambda t: ru_rules.strip(server.clean_for_speech(t, pron=p))
+        self.assertEqual(say("т.к. дождь"), "так, как дождь")
+        self.assertEqual(say("ну, ладно"), "ну, ладно")               # «ну,» + запятая текста — одна запятая
+
 
 class TextFp(unittest.TestCase):
     """Отпечатки озвученного текста — по ним приложение находит устаревшую скачанную озвучку (шаг 5)."""
