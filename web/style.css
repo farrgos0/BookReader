@@ -830,3 +830,4 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .upd-warn { font-size: 13px; color: #b26a00; }
 .upd-notes summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13.5px; }
 .upd-notes pre { white-space: pre-wrap; font: inherit; font-size: 12.5px; max-height: 220px; overflow: auto; margin: 6px 0 0; }
+.upd-link { color: var(--accent); }

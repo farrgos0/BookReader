@@ -2869,6 +2869,20 @@ window.addEventListener("error", (e) => {
   const verNum = (v) => (String(v || "").match(/\d+/g) || []).slice(0, 3).map(Number).concat([0, 0, 0]).slice(0, 3);
   const isNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
   const today = () => new Date().toISOString().slice(0, 10);
+  // «Что нового» в окне обновления — только блок для читалки из описания выпуска (см. RELEASE.md, раздел 6):
+  //   <!-- bookreader:whatsnew -->
+  //   - коротко и только важное для пользователя
+  //   <!-- /bookreader:whatsnew -->
+  // На странице GitHub эти пометки не видны. Нет блока — «Что нового» не показываем (только ссылка на выпуск):
+  // так в окно не попадёт инструкция по установке или полный список доработок.
+  function whatsNew(body) {
+    const m = /<!--\s*bookreader:whatsnew\s*-->([\s\S]*?)<!--\s*\/bookreader:whatsnew\s*-->/i.exec(String(body || ""));
+    if (!m) return "";
+    const lines = m[1].split(/\r?\n/)
+      .map((x) => x.replace(/^\s*#+\s*/, "").replace(/\*\*|__|`/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").trimEnd())
+      .filter((x, i, a) => x.trim() || (i > 0 && a[i - 1].trim()));
+    return lines.slice(0, 15).join("\n").trim().slice(0, 1200);
+  }
   async function fetchLatest(repo) {
     const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
     if (r.status === 404) return { version: "", none: true };
@@ -2877,7 +2891,7 @@ window.addEventListener("error", (e) => {
     const assets = j.assets || [];
     const apk = assets.find((a) => /^BookReader-[\d.]+\.apk$/i.test(a.name));
     return {
-      version: String(j.tag_name || "").replace(/^v/i, ""), notes: String(j.body || "").slice(0, 3000), url: j.html_url,
+      version: String(j.tag_name || "").replace(/^v/i, ""), notes: whatsNew(j.body), url: j.html_url,
       apk: apk ? apk.browser_download_url : null, apkSize: apk ? apk.size : 0,
       server: assets.some((a) => /^BookReader_Server_v[\d.]+_update\.zip$/.test(a.name)),
     };
@@ -2943,10 +2957,14 @@ window.addEventListener("error", (e) => {
     if (srv && serverMeta.here) html += `<p class="upd-hint">Сервер остановится примерно на минуту и запустится снова; если что-то пойдёт
       не так, прежняя версия вернётся сама.</p>`;
     if (l.notes) html += `<details class="upd-notes"${l.notes.length < 400 ? " open" : ""}><summary>Что нового в ${esc(l.version)}</summary><pre>${esc(l.notes)}</pre></details>`;
+    if (l.url) html += `<p class="upd-hint"><a href="${esc(l.url)}" target="_blank" rel="noopener" class="upd-link">Подробнее о выпуске — на GitHub</a></p>`;
     const buttons = [{ label: "Закрыть", value: null }];
     if (srv && serverMeta.here) buttons.push({ label: "Установить на сервер", primary: !app, value: "srv" });
     if (app) buttons.push({ label: `Скачать${l.apkSize ? " (" + fmtSize(l.apkSize) + ")" : ""}`, primary: true, value: "apk" });
-    const act = await ask(`Обновление BookReader ${l.version}`, html, buttons);
+    const shown = ask(`Обновление BookReader ${l.version}`, html, buttons);
+    const link = askEl.body.querySelector(".upd-link");
+    if (link && Native) link.onclick = (e) => { e.preventDefault(); Native.openUrl(l.url).catch(() => {}); };   // в приложении — внешний браузер
+    const act = await shown;
     if (act === "apk") { try { await Native.openUrl(l.apk); } catch (e) { toast("Не получилось: " + e.message, 4000); } }
     if (act === "srv") installServerUpdate(true);
   }

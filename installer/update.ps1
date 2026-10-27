@@ -64,6 +64,15 @@ $cfg = $null
 try { $cfg = Get-Content (Join-Path $DataDir "server.json") -Raw -Encoding UTF8 | ConvertFrom-Json } catch {}
 $Repo = if ($cfg -and $cfg.update_repo) { "$($cfg.update_repo)" } else { $DefaultRepo }
 
+# «Что нового» — только блок для читалки из описания выпуска (RELEASE.md, раздел 6), как в окне «Обновление»:
+# <!-- bookreader:whatsnew --> … <!-- /bookreader:whatsnew -->. Нет блока — ничего не показываем.
+function WhatsNew([string]$body) {
+    $m = [regex]::Match($body, '(?s)<!--\s*bookreader:whatsnew\s*-->(.*?)<!--\s*/bookreader:whatsnew\s*-->')
+    if (-not $m.Success) { return "" }
+    $lines = $m.Groups[1].Value -split "`r?`n" | ForEach-Object { ($_ -replace '^\s*#+\s*', '' -replace '\*\*|__|`', '').TrimEnd() } | Where-Object { $_.Trim() }
+    return (($lines | Select-Object -First 15) -join "`n")
+}
+
 # последняя версия на GitHub: { Version, Tag, Zip, Sha, Notes } или $null
 function Get-LatestRelease {
     if (-not $Repo) { return $null }
@@ -73,7 +82,7 @@ function Get-LatestRelease {
     if (-not $zip) { return $null }
     $sha = $r.assets | Where-Object { $_.name -eq "$($zip.name).sha256" } | Select-Object -First 1
     return [pscustomobject]@{
-        Version = "$($r.tag_name)".TrimStart('v', 'V'); Tag = $r.tag_name; Notes = "$($r.body)"
+        Version = "$($r.tag_name)".TrimStart('v', 'V'); Tag = $r.tag_name; Notes = (WhatsNew "$($r.body)")
         Zip = $zip.browser_download_url; ZipName = $zip.name; Sha = $(if ($sha) { $sha.browser_download_url } else { $null })
     }
 }
