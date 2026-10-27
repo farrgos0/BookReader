@@ -1941,7 +1941,8 @@ window.addEventListener("error", (e) => {
     el.dlListen.hidden = !running && !(r && r.done);
     el.dlStart.hidden = running;
     el.dlStart.disabled = offlineMode;
-    el.dlStop.hidden = !running;
+    // «Остановить» — если у книги идёт или ждёт любая загрузка (другим голосом, из общей очереди — тоже)
+    el.dlStop.hidden = !rowsOf(bookId).some((x) => x.running || x.queued);
     el.dlDelete.hidden = true; // удаление — у каждой озвучки в списке ниже
     renderPacks();
   }
@@ -2002,7 +2003,9 @@ window.addEventListener("error", (e) => {
         <div class="dl-pack-info"><b>Озвучка — ${esc(voiceName(r.voice))}</b>${isCur ? ' <span class="dl-pack-tag">сейчас</span>' : ""}
           <small>Загружено ${pct}% · ${fmtSize(r.bytes || 0)}${st ? " · " + st : ""}</small></div>
         <button class="dl-pack-btn" data-pact="listen" title="Слушать этой озвучкой">▶</button>
-        <button class="dl-pack-btn danger" data-pact="del" title="Удалить эту озвучку">Удалить</button>
+        ${r.running || r.queued
+          ? '<button class="dl-pack-btn" data-pact="stop" title="Остановить загрузку (скачанное останется)">Остановить</button>'
+          : '<button class="dl-pack-btn danger" data-pact="del" title="Удалить эту озвучку">Удалить</button>'}
       </div>`;
     }).join("");
   }
@@ -2037,6 +2040,11 @@ window.addEventListener("error", (e) => {
     const btn = e.target.closest("[data-pact]");
     if (!btn) return;
     const v = btn.closest(".dl-pack").dataset.voice;
+    if (btn.dataset.pact === "stop") {
+      await Native.Audio.cancel(bookId);
+      toast("Загрузка остановлена — скачанное сохранено");
+      return refreshAudio();
+    }
     if (btn.dataset.pact === "listen") {
       closeDl();
       rememberVoice(v);
