@@ -1,40 +1,42 @@
-/* Личные правила произношения (BookReader 1.2.0).
+/* Личные правила произношения (BookReader 1.2.0, «Произношение» 2.0 — данные в pron-model.js).
    Хранятся на этом устройстве (в браузере — localStorage, в приложении — ещё и в его настройках, чтобы
    их видела нативная озвучка) и уходят на сервер с каждым запросом озвучки — только те, что действуют
-   для открытой книги. Сервер их не хранит. Формат правила: { id, w, c, s, books }:
-     w — слово как в книге, c — учитывать регистр, s — как звучит, books — null (во всех книгах) или список id книг. */
+   для открытой книги. Сервер их не хранит. Формат правила: { id, f, w, c, s, books, t }:
+     w — слово как в книге, c — учитывать регистр, s — как звучит, books — null (во всех книгах) или список id книг;
+     f — папка (null — верхний уровень), t — время создания. */
 (function () {
   "use strict";
   const KEY = "fb2r:pron";
-  const VOWELS = "аеёиоуыэюяАЕЁИОУЫЭЮЯ";
+  const M = window.PronModel;
 
   function load() {
     try {
-      const d = JSON.parse(localStorage.getItem(KEY) || "null");
-      if (d && Array.isArray(d.rules)) return { rules: d.rules, opts: d.opts || {} };
+      const j = localStorage.getItem(KEY);
+      if (j) return M.migrate(JSON.parse(j));
     } catch (_) {}
-    return { rules: [], opts: {} };
+    return M.empty();
   }
   let data = load();
   const listeners = [];
   // приложение: если хранилище страницы очистилось, а в настройках приложения правила есть — берём их оттуда
-  if (window.Native && !data.rules.length) {
+  if (window.Native && !data.rules.length && !data.folders.length) {
     window.Native.getPref("pron").then((j) => {
-      if (!j || data.rules.length) return;
+      if (!j || data.rules.length || data.folders.length) return;
       try {
-        const d = JSON.parse(j);
-        if (d && Array.isArray(d.rules)) { data = { rules: d.rules, opts: d.opts || {} }; localStorage.setItem(KEY, j); }
+        data = M.migrate(JSON.parse(j));
+        localStorage.setItem(KEY, JSON.stringify(data));
       } catch (_) {}
     }).catch(() => {});
   }
 
-  // правило годится для озвучки: заполнены оба поля и «как звучит» без ошибок
-  const complete = (r) => !!(r && r.w && r.s && !checkSay(r.s));
+  const complete = M.complete;
+  const checkSay = M.checkSay;
 
-  // сохраняются все непустые правила, в том числе недозаполненные (их можно дописать позже);
-  // в озвучку уходят только полностью заполненные (payload)
+  /** Сохранить данные (v2). Принимает и { rules, opts } без папок — папки тогда остаются прежними.
+      Неполные правила не сохраняются (Произношение 2.0). */
   async function save(next) {
-    data = { rules: next.rules.filter((r) => r.w || r.s), opts: next.opts || {} };
+    const src = next && next.v === 2 ? next : { v: 2, folders: data.folders, rules: (next && next.rules) || [], opts: (next && next.opts) || {} };
+    data = M.migrate(src);
     const json = JSON.stringify(data);
     try { localStorage.setItem(KEY, json); } catch (_) {}
     // в приложении правила читает нативная озвучка — дожидаемся записи, прежде чем она возьмёт озвучку заново
@@ -42,24 +44,10 @@
     listeners.forEach((f) => { try { f(data); } catch (_) {} });
   }
 
-  // та же проверка, что на сервере (ru_rules.check_say)
-  function checkSay(s) {
-    s = (s || "").trim();
-    if (!s) return "пусто";
-    if (/\d/.test(s)) return "цифры не принимаются — напишите словами";
-    if (/[A-Za-z]/.test(s)) return "латиница не принимается — напишите русскими буквами";
-    if (!/^[А-Яа-яЁё+\- ]+$/.test(s)) return "можно только русские буквы, «ё», «+», пробел и дефис";
-    if (s.includes("++")) return "два «+» подряд";
-    if (new RegExp(`\\+(?![${VOWELS}])`).test(s)) return "«+» ставится перед ударной гласной";
-    if (!/[А-Яа-яЁё]/.test(s)) return "нет букв";
-    return "";
-  }
-
   /** Что отправить серверу для книги id: { rules, opts } (пустые поля не отправляем). */
   function payload(bookId) {
     const out = {};
-    const rules = data.rules.filter((r) => complete(r) && (!r.books || (bookId && r.books.includes(bookId))))
-      .map((r) => ({ w: r.w, c: !!r.c, s: r.s }));
+    const rules = M.forBook(data, bookId);
     if (rules.length) out.rules = rules;
     if (data.opts && data.opts.date_order && data.opts.date_order !== "dmy") out.opts = { date_order: data.opts.date_order };
     return out;
@@ -67,7 +55,7 @@
   /** Отпечаток набора для книги — меняется, когда меняются действующие для неё правила (кэш озвучки). */
   function stamp(bookId) { return JSON.stringify(payload(bookId)); }
 
-  const uid = () => Math.random().toString(36).slice(2, 10);
+  const uid = M.uid;
 
   // ---------- окно «Произношение» ----------
   // ctx: { ask, askEl, esc, toast, library: () => Promise<[{id,title}]>, catalog: () => [{id,title}], voice: () => id,
@@ -88,7 +76,7 @@
         <li><b>Аа</b> — только слово с заглавной: имя «Роза», но не цветок.</li>
         <li>Каждая форма слова — отдельное правило: «Тёма», «Тёму».</li>
         <li>Изменения сохраняются сами. <b>Не полностью заполненное правило</b> (нет слова, нет «как звучит» или
-          в нём ошибка) сохраняется, но <b>в озвучке не используется</b>, пока его не дописать. Пустые правила не сохраняются.</li>
+          в нём ошибка) не сохраняется.</li>
       </ul></details>`;
 
     const html = `<div class="pr">
@@ -121,8 +109,8 @@
         bar.querySelector(".pr-u-title").textContent = bad.length === 1 ? "Одно правило заполнено не полностью."
           : `Не полностью заполнено правил: ${bad.length}.`;
         bar.querySelector("span").textContent = bad.length === 1
-          ? "Оно сохранено, но в озвучке не используется, пока его не дописать."
-          : "Они сохранены, но в озвучке не используются, пока их не дописать.";
+          ? "Оно не сохранится, если выйти сейчас."
+          : "Они не сохранятся, если выйти сейчас.";
         bar.hidden = false;
         bar.scrollIntoView({ block: "nearest" });
         asking = (v) => { asking = null; bar.hidden = true; resolve(v); };
