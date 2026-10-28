@@ -1603,6 +1603,13 @@ def start_log():
         folder = paths.logs_dir()
         path = os.path.join(folder, "server.log")
         clean_old_logs(folder, {"server.log", "install.log"})
+        # каждый запуск — журнал заново (прошлые не копятся); пока сервер работает, размер ограничен ротацией
+        base, ext = os.path.splitext(path)
+        for old in [path] + [f"{base}.{n}{ext}" for n in range(1, LOG_KEEP + 1)]:
+            try:
+                os.remove(old)
+            except OSError:
+                pass
         log = _RotatingLog(path)
         log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} запуск BookReader {VERSION} =====\n")
         log.write(f"[запуск {_time.perf_counter() - _T0:6.1f} с] библиотеки Python загружены (numpy и модули BookReader)\n")
