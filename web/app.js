@@ -1518,7 +1518,7 @@ window.addEventListener("error", (e) => {
         <span class="lib-info">
           <span class="lib-title">${esc(m.title)}</span>
           <span class="lib-author">${esc(authors || "Автор не указан")}</span>
-          <span class="lib-meta">${isAudio ? '<svg class="lib-ab" aria-label="Аудиокнига"><use href="#i-voice"/></svg>' : ""}<span class="badge">${esc(m.formatLabel || m.format || "")}</span>${len}${fmtSize(m.size || 0)}<span class="lib-pct">${pct ? " · " + pct + "%" : " · не начата"}</span></span>
+          <span class="lib-meta">${isAudio ? '<svg class="lib-ab" aria-label="Аудиокнига"><use href="#i-voice"/></svg>' : ""}<span class="badge">${esc(m.formatLabel || m.format || "")}</span><span class="lib-sz">${len}${fmtSize(m.size || 0)}</span><span class="lib-pct">${pct ? " · " + pct + "%" : " · не начата"}</span></span>
           <span class="lib-progress"><i style="width:${pct}%"></i></span>
           ${Native && modeAllows("tts") && !isAudio ? audioBadge(m.id) : ""}
         </span>
@@ -3601,6 +3601,7 @@ window.addEventListener("error", (e) => {
     // открыть аудиокнигу: текстовая книга закрывается (место сохранено), как при обычном переключении книг
     enter(meta, temp) {
       closeBook();
+      window.scrollTo(0, 0);   // лента текстовой книги могла быть прокручена — обложка не должна уехать под шапку
       el.empty.hidden = true;
       if (!temp) store.set("lastBook", meta.id);
     },

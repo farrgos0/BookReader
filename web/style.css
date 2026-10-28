@@ -853,7 +853,7 @@ html.autonomous .seg, html.autonomous .seg:hover, html.autonomous .seg.current, 
 }   /* «Каталог» скрыт — «Добавить» во всю ширину */
 
 /* ---------- аудиокнига (шаг 8): обложка в середине, плеер внизу — общий с читалкой ---------- */
-.ab-stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center;
+.ab-stage { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; text-align: center;
   min-height: calc(100dvh - var(--top-h) - var(--player-h, 120px) - 24px); padding: 20px 16px; max-width: 640px; margin: 0 auto; }
 .ab-stage[hidden] { display: none; }
 .ab-cover { width: min(64vw, 300px, 36vh); aspect-ratio: 1; border-radius: 12px; overflow: hidden; flex: none;
@@ -911,4 +911,39 @@ html.native #selAudio.sel-btn.native-only[hidden] { display: none !important; }
   .home-card .lib-cover { width: 72px; height: 104px; }
   .home-title { font-size: 17px; }
   .recent-list { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 14px; }
+}
+
+/* ---------- длинные слова без пробелов (названия, авторы, правила): переносятся, а не вылезают ---------- */
+body { overflow-wrap: break-word; }
+.lib-title, .lib-author, .r-title, .home-title, .home-author, .home-meta, #tocList a, #tocList a.ab-toc span,
+#askHead, .ask-body, .pr-hint, .prp-crumbs, .cat-title, .cat-author, .cat-folder,
+.status-main, .ab-title, .ab-author, .reader, .reader h1, .reader h2, .reader h3, .reader .book-intro { overflow-wrap: anywhere; }
+.prp-main > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-author, .home-author { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.home-title { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+#askHead { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; }
+.lib-pct { white-space: nowrap; }
+
+/* аудиокнига: по центру, но если не помещается — сверху (обложка не уезжает под шапку); длинные названия — не больше 3 строк */
+.ab-stage > :first-child { margin-top: auto; }
+.ab-stage > :last-child { margin-bottom: auto; }
+.ab-title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ab-author { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-height: 520px) { .ab-cover { width: min(40vw, 30vh, 200px); } .ab-title { font-size: 17px; } }
+/* строка «формат · размер · процент» у книги: переносится целыми частями */
+.lib-meta { flex-wrap: wrap; row-gap: 0; }
+.lib-sz { white-space: nowrap; }
+/* узкий телефон: плеер в две строки (состояние / кнопки), кнопки и настройки помещаются в одну */
+@media (max-width: 360px) {
+  .controls-row { gap: 6px 8px; }
+  .transport { gap: 6px; }
+  .settings { gap: 4px; }
+  .field.rate select { min-width: 62px; padding: 0 4px; }
+}
+/* «Произношение» на низком экране (телефон лёжа): прокручивается всё окно, шапка, панель выбора и «Экспорт/Импорт» на месте */
+@media (max-height: 520px) {
+  .prp-card { overflow-y: auto; }
+  .prp-list { flex: none; overflow: visible; }
+  .prp-head { position: sticky; top: 0; z-index: 3; background: var(--surface); }
+  .prp .sel-bar, .prp-io { position: sticky; bottom: 0; z-index: 3; background: var(--surface); margin-top: auto; }
 }
