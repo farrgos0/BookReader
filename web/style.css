@@ -339,10 +339,11 @@ body.paged.spread .pager::after {
 html.native .set-btn.native-only { display: flex !important; }
 .set-view { flex: 1; overflow: auto; padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 16px; }
 .set-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
-.set-field select {
+.set-field select, .set-field input:not([type=checkbox]):not([type=radio]) {
   height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--bg); color: var(--ink); font-size: 15.5px; font-weight: 400; cursor: pointer;
 }
+.set-field input:not([type=checkbox]):not([type=radio]) { cursor: text; min-width: 0; }
 .set-hint { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin: 4px 0 0; }
 
 /* ---------- плеер: скорость в одной строке с кнопками ---------- */
@@ -358,6 +359,7 @@ html.native .set-btn.native-only { display: flex !important; }
 html.native .toc-tools.native-only { display: block !important; }
 .toc-tools .set-btn { width: 100%; }
 .lib-audio { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 10px; width: fit-content; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-audio svg { width: 13px; height: 13px; flex: none; }
 .lib-audio.ok { background: color-mix(in srgb, #2e9d57 18%, transparent); color: #24834a; }
 .lib-audio.part { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
 .lib-audio.run { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
@@ -491,7 +493,7 @@ html.native .set-field.native-only { display: flex !important; }
   .ask-body { font-size: 13px; }
   .ask-actions { padding: 8px; gap: 6px; }
   .ask-actions .set-btn { height: 36px; font-size: 13px; flex-basis: 100%; }
-  .set-field select, .dl-range select { height: 36px; font-size: 13.5px; }
+  .set-field select, .set-field input:not([type=checkbox]):not([type=radio]), .dl-range select { height: 36px; font-size: 13.5px; }
   .server-warn { margin: 6px; font-size: 12px; padding: 6px 8px; }
   .toast { font-size: 12px; padding: 6px 10px; }
   body.paged .page-bar { padding: 0 4px; }
@@ -682,6 +684,10 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 .pr-confirm span { flex: 1 1 100%; }
 .pr-confirm .set-btn { flex: 1; height: 38px; font-size: 14px; }
 .set-btn.danger { color: #c0392b; border-color: #c0392b; }
+/* подтверждение необратимого действия («Удалить», «Сбросить», «Очистить») — красная основная кнопка */
+.set-btn.primary.danger { background: #c0392b; border-color: #c0392b; color: #fff; }
+.set-btn.primary.danger:hover { color: #fff; filter: brightness(1.08); }
+.r-meta .lib-ab, .home-meta .lib-ab { vertical-align: -2px; margin-right: 3px; }
 .pr-err { color: #c0392b; font-size: 12.5px; }
 .pr-opt, .pr-book { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 3px 0; cursor: pointer; }
 .pr-opt input, .pr-book input { accent-color: var(--accent); }

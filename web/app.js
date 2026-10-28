@@ -1526,12 +1526,11 @@ window.addEventListener("error", (e) => {
       <button class="icon-btn lib-more" data-act="menu" title="Действия" aria-label="Действия">⋯</button>
       <button class="icon-btn lib-fav${m.favorite ? " on" : ""}" data-act="fav" aria-pressed="${m.favorite ? "true" : "false"}"
         title="${m.favorite ? "Убрать из избранного" : "В избранное"}" aria-label="${m.favorite ? "Убрать из избранного" : "В избранное"}"><svg><use href="#i-star"/></svg></button>
-      <div class="lib-actions" hidden>${mainMenuHtml(isAudio)}</div>
     </div>`;
   }
 
   // список книг: виртуальный (тысячи книг не тормозят); пока открыто меню книги — не перерисовываем
-  const libVL = VList(el.libList, { frozen: () => !!el.libList.querySelector(".lib-actions:not([hidden])") });
+  const libVL = VList(el.libList);
   function renderLibrary() {
     const list = sortedBooks();
     if (!selecting && !el.libView.hidden) libTitle();
@@ -1546,7 +1545,7 @@ window.addEventListener("error", (e) => {
   // ---------- стартовый экран: последняя книга, избранные, недавние ----------
   const tile = (m) => `<button class="recent-item" data-id="${m.id}" title="${esc(m.title)}">
       <span class="lib-cover">${coverHtml(m)}</span><span class="r-title">${esc(m.title)}</span>
-      <span class="r-meta">${m.format === "audio" ? "🎧 " : ""}${esc(m.formatLabel || "")} · ${Math.round((m.progress || 0) * 100)}%</span></button>`;
+      <span class="r-meta">${m.format === "audio" ? '<svg class="lib-ab"><use href="#i-voice"/></svg>' : ""}${esc(m.formatLabel || "")} · ${Math.round((m.progress || 0) * 100)}%</span></button>`;
   function renderHome() {
     const byOpened = [...libCache].sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0));
     const last = byOpened[0];
@@ -1563,7 +1562,7 @@ window.addEventListener("error", (e) => {
           <span class="home-label">${pct ? (audio ? "Продолжить слушать" : "Продолжить чтение") : (audio ? "Начать слушать" : "Начать чтение")}</span>
           <span class="home-title">${esc(last.title)}</span>
           <span class="home-author">${esc((last.authors || []).join(", ") || "Автор не указан")}</span>
-          <span class="home-meta">${audio ? "🎧 " : ""}${esc(last.formatLabel || "")} · ${pct}%${left}</span>
+          <span class="home-meta">${audio ? '<svg class="lib-ab"><use href="#i-voice"/></svg>' : ""}${esc(last.formatLabel || "")} · ${pct}%${left}</span>
           <span class="lib-progress"><i style="width:${pct}%"></i></span>
         </span></button>`;
     }
@@ -1618,7 +1617,6 @@ window.addEventListener("error", (e) => {
     const item = btn.closest(".lib-item");
     const id = item.dataset.id;
     const meta = libCache.find((m) => m.id === id);
-    const actions = item.querySelector(".lib-actions");
     switch (btn.dataset.act) {
       case "open":
         if (selecting) { toggleSelected(id, item); return; }
@@ -1636,85 +1634,88 @@ window.addEventListener("error", (e) => {
         toast(on ? "Добавлено в избранное" : "Убрано из избранного", 1800);
         return;
       }
-      case "menu":
-        el.libList.querySelectorAll(".lib-actions").forEach((a) => { if (a !== actions) a.hidden = true; });
-        actions.hidden = !actions.hidden;
-        if (!actions.hidden) resetActions(actions);
-        return;
-      case "more":
-        actions.innerHTML = `<button data-act="export">${Native ? "Поделиться файлом книги" : "Сохранить файл книги"}</button>
-          <button data-act="reset">Сбросить прогресс</button><button data-act="delete" class="danger">Удалить книгу</button>
-          <button data-act="cancel">‹ Назад</button>`;
-        return;
-      case "export": {
-        if (Native) {
-          try { await Native.exportBook(id); } catch (e) { toast("Не получилось: " + e.message, 4000); }
-          return;
-        }
-        const rec = await Library.getFile(id);
-        if (!rec) return toast("Файл не найден");
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(new Blob([rec.data], { type: rec.type || "application/octet-stream" }));
-        a.download = rec.name;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-        return;
-      }
-      case "reset":
-        actions.innerHTML = `<span class="confirm">Сбросить прогресс чтения «${esc(meta.title)}» на начало книги?</span>
-          <button data-act="reset-yes" class="danger">Сбросить</button><button data-act="cancel">Отмена</button>`;
-        return;
-      case "reset-yes":
-        resetActions(actions); actions.hidden = true;
-        await Library.update(id, meta.format === "audio" ? { apos: 0, progress: 0 } : { pos: 0, progress: 0 });
-        Object.assign(meta, { pos: 0, progress: 0, apos: 0 });
-        if (id === bookId) jump(0, false);
-        Audiobook.reset(id);
-        renderLibrary();
-        return toast("Прогресс сброшен");
-      case "delete":
-        actions.innerHTML = `<span class="confirm">Удалить «${esc(meta.title)}» из библиотеки?${Native ? " Загруженная озвучка книги тоже удалится." : ""}</span>
-          <button data-act="delete-yes" class="danger">Удалить</button><button data-act="cancel">Отмена</button>`;
-        return;
-      case "delete-yes":
-        await Library.remove(id);
-        if (id === bookId) closeBook();
-        await refreshLibrary();
-        return toast("Книга удалена");
-      case "rename":
-        actions.innerHTML = `<label>Название<input class="in-title" value="${esc(meta.title)}"></label>
-          <label>Автор<input class="in-author" value="${esc((meta.authors || []).join(", "))}"></label>
-          <button data-act="rename-save">Сохранить</button><button data-act="cancel">Отмена</button>`;
-        actions.querySelector(".in-title").focus();
-        return;
-      case "rename-save": {
-        const title = actions.querySelector(".in-title").value.trim() || meta.title;
-        const authors = actions.querySelector(".in-author").value.split(",").map((s) => s.trim()).filter(Boolean);
-        await Library.update(id, { title, authors, customMeta: true });
-        Object.assign(meta, { title, authors });
-        Audiobook.rename(id, title, authors);
-        if (id === bookId && book) {
-          book.title = title; book.authors = authors;
-          el.title.textContent = title;
-          el.author.textContent = (authors.join(", ") || "Автор не указан") + " · " + (book.formatLabel || "");
-        }
-        renderLibrary();
-        return toast("Сохранено");
-      }
-      case "cancel": resetActions(actions); return;
+      case "menu": if (meta) bookMenu(meta); return;
     }
   });
-  // меню книги: основное и «Ещё…» (редкие действия — экспорт файла и сброс прогресса)
-  function mainMenuHtml(isAudio) {
-    return (Native && modeAllows("tts") && !isAudio ? '<button data-act="audio">Озвучка без интернета…</button>' : "") +
-      '<button data-act="rename">Переименовать</button><button data-act="more">Ещё…</button>';
-  }
-  function resetActions(actions) {
-    const item = actions.closest(".lib-item");
-    const m = item && libCache.find((x) => x.id === item.dataset.id);
-    actions.innerHTML = mainMenuHtml(!!m && m.format === "audio");
-  }
 
+  // ---------- меню книги «⋯»: компактный список, как в «Произношении»; подтверждения и правка — в окне ----------
+  async function bookMenu(meta) {
+    const id = meta.id, isAudio = meta.format === "audio";
+    const info = esc(((meta.authors || []).join(", ") || "Автор не указан") + " · " + (meta.formatLabel || "") + " · " + fmtSize(meta.size || 0));
+    const act = await menuDialog(meta.title, info, [
+      ...(Native && modeAllows("tts") && !isAudio ? [{ label: "Озвучка без интернета…", value: "audio" }] : []),
+      { label: "Переименовать…", value: "rename" },
+      { label: Native ? "Поделиться файлом книги" : "Сохранить файл книги", value: "export" },
+      { label: "Сбросить прогресс…", value: "reset" },
+      { label: "Удалить…", value: "delete", danger: true },
+    ]);
+    if (act === "audio") {
+      if (id !== bookId) await openFromLibrary(id);
+      if (id === bookId) { closePanels(); openDl(); }
+    } else if (act === "rename") renameBook(meta);
+    else if (act === "export") exportBook(id);
+    else if (act === "reset") {
+      const ok = await ask("Сбросить прогресс?", `<p>${isAudio ? "Прослушивание" : "Чтение"} «${esc(meta.title)}» начнётся с начала книги.</p>`,
+        [{ label: "Отмена", value: null }, { label: "Сбросить", primary: true, danger: true, value: 1 }]);
+      if (!ok) return;
+      await Library.update(id, isAudio ? { apos: 0, progress: 0 } : { pos: 0, progress: 0 });
+      Object.assign(meta, { pos: 0, progress: 0, apos: 0 });
+      if (id === bookId) jump(0, false);
+      Audiobook.reset(id);
+      renderLibrary();
+      toast("Прогресс сброшен");
+    } else if (act === "delete") {
+      const ok = await ask("Удалить книгу?", `<p>«${esc(meta.title)}» удалится из библиотеки${Native && !isAudio ? " вместе с загруженной озвучкой" : ""}. Отменить нельзя.</p>`,
+        [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, danger: true, value: 1 }]);
+      if (!ok) return;
+      await Library.remove(id);
+      if (id === bookId) closeBook();
+      await refreshLibrary();
+      toast("Книга удалена");
+    }
+  }
+  async function renameBook(meta) {
+    const id = meta.id;
+    const v = await ask("Переименовать", `<label class="set-field"><span>Название</span><input class="in-title" value="${esc(meta.title)}"></label>
+      <label class="set-field"><span>Автор</span><input class="in-author" value="${esc((meta.authors || []).join(", "))}"></label>`,
+      [{ label: "Отмена", value: null }, { label: "Сохранить", primary: true, value: 1 }], { top: true });
+    if (!v) return;
+    const title = askEl.body.querySelector(".in-title").value.trim() || meta.title;
+    const authors = askEl.body.querySelector(".in-author").value.split(",").map((x) => x.trim()).filter(Boolean);
+    await Library.update(id, { title, authors, customMeta: true });
+    Object.assign(meta, { title, authors });
+    Audiobook.rename(id, title, authors);
+    if (id === bookId && book) {
+      book.title = title; book.authors = authors;
+      el.title.textContent = title;
+      el.author.textContent = (authors.join(", ") || "Автор не указан") + " · " + (book.formatLabel || "");
+    }
+    renderLibrary();
+    toast("Сохранено");
+  }
+  async function exportBook(id) {
+    if (Native) {
+      try { await Native.exportBook(id); } catch (e) { toast("Не получилось: " + e.message, 4000); }
+      return;
+    }
+    const rec = await Library.getFile(id);
+    if (!rec) return toast("Файл не найден");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([rec.data], { type: rec.type || "application/octet-stream" }));
+    a.download = rec.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  // меню «⋯»: заголовок, строка пояснения, пункты; закрыть — ✕, фон, «Назад» (без «Отмены»)
+  async function menuDialog(title, info, items) {
+    const p = ask(title, `<div class="pr-menu">${info ? `<div class="pr-hint">${info}</div>` : ""}
+      ${items.map((it, i) => `<button class="pr-mi${it.danger ? " danger" : ""}" data-i="${i}">${esc(it.label)}</button>`).join("")}</div>`, []);
+    askEl.box.classList.add("pr-small");
+    askEl.body.querySelectorAll(".pr-mi").forEach((b) => (b.onclick = () => { if (askDone) askDone(items[Number(b.dataset.i)].value); }));
+    const v = await p;
+    askEl.box.classList.remove("pr-small");
+    return v;
+  }
 
   // ---------- выбор нескольких книг и групповые действия ----------
   let selecting = false;
@@ -1726,7 +1727,6 @@ window.addEventListener("error", (e) => {
     el.selBar.hidden = !on;
     el.btnSelect.title = on ? "Закончить выбор" : "Выбрать несколько";
     if (!on && !el.libView.hidden) libTitle();
-    el.libList.querySelectorAll(".lib-actions").forEach((a) => (a.hidden = true));
     renderLibrary();
     updateSelBar();
   }
@@ -1764,7 +1764,7 @@ window.addEventListener("error", (e) => {
     const id = item.dataset.id;
     if (!selecting) setSelecting(true);
     toggleSelected(id, [...el.libList.querySelectorAll(".lib-item")].find((x) => x.dataset.id === id));
-  }, ".lib-actions");
+  }, ".lib-more, .lib-fav");
   el.btnSelect.onclick = () => setSelecting(!selecting);
   $("selCancel").onclick = () => setSelecting(false);
   el.selAll.onclick = () => {
@@ -1800,7 +1800,7 @@ window.addEventListener("error", (e) => {
     const names = list.slice(0, 5).map((m) => `<li>${esc(m.title)}</li>`).join("") + (list.length > 5 ? `<li>…и ещё ${list.length - 5}</li>` : "");
     const ok = await ask("Удалить книги?",
       `<p>Удалить из библиотеки ${list.length} ${plural(list.length, "книгу", "книги", "книг")}?${Native ? " Их загруженная озвучка тоже удалится." : ""}</p><ul>${names}</ul>`,
-      [{ label: "Отмена", value: null }, { label: `Удалить (${list.length})`, primary: true, value: "yes" }]);
+      [{ label: "Отмена", value: null }, { label: `Удалить (${list.length})`, primary: true, danger: true, value: "yes" }]);
     if (ok !== "yes") return;
     for (const m of list) {
       await Library.remove(m.id);
@@ -1915,23 +1915,23 @@ window.addEventListener("error", (e) => {
   }
   function audioBadge(id) {
     const r = mainRow(id);
-    let cls = "net", text = "☁ Озвучка с сервера", title = "Озвучка не загружена: для чтения вслух нужен сервер на ПК";
+    let cls = "net", icon = "i-cloud", text = "Озвучка с сервера", title = "Озвучка не загружена: для чтения вслух нужен сервер на ПК";
     if (r) {
       const pct = r.total ? Math.floor((r.done / r.total) * 100) : 0;
       const name = `Озвучка — ${voiceName(r.voice)}`;
-      if (r.running && r.paused) { cls = "err"; text = `⏸ Нет связи · ${pct}% · ${name}`; title = "Загрузка на паузе: нет связи с сервером"; }
-      else if (r.running) { cls = "run"; text = `⬇ Загружается ${pct}% · ${name}`; title = "Идёт загрузка озвучки"; }
-      else if (r.queued) { cls = "run"; text = `⏳ В очереди · ${name}`; title = "Ждёт загрузки"; }
-      else if (r.total && r.done >= r.total) { cls = "ok"; text = `✓ Загружено 100% · ${name}`; title = "Озвучка загружена целиком: сервер не нужен"; }
-      else if (r.done) { cls = "part"; text = `◐ Загружено ${pct}% · ${name}`; title = "Загружена часть: остальное — с сервера"; }
-      if (r.error && !r.running) { cls = "err"; text = `⚠ ${pct ? pct + "% · " : ""}ошибка загрузки`; title = r.error; }
+      if (r.running && r.paused) { cls = "err"; icon = "i-pause"; text = `Нет связи · ${pct}% · ${name}`; title = "Загрузка на паузе: нет связи с сервером"; }
+      else if (r.running) { cls = "run"; icon = "i-dl"; text = `Загружается ${pct}% · ${name}`; title = "Идёт загрузка озвучки"; }
+      else if (r.queued) { cls = "run"; icon = "i-dl"; text = `В очереди · ${name}`; title = "Ждёт загрузки"; }
+      else if (r.total && r.done >= r.total) { cls = "ok"; icon = ""; text = `✓ Загружено 100% · ${name}`; title = "Озвучка загружена целиком: сервер не нужен"; }
+      else if (r.done) { cls = "part"; icon = ""; text = `◐ Загружено ${pct}% · ${name}`; title = "Загружена часть: остальное — с сервера"; }
+      if (r.error && !r.running) { cls = "err"; icon = ""; text = `⚠ ${pct ? pct + "% · " : ""}ошибка загрузки`; title = r.error; }
       const upd = (r.stale || 0) + (r.unknown || 0);
       if (typeof r.checking === "number") { text += ` · ↻ проверка ${r.checking}%`; title += ". Идёт проверка: не изменилось ли звучание после правок"; }
       else if (upd && !r.running) { text += " · ↻"; title += `. Ожидает обновления фраз: ${upd} — «Озвучка без интернета»`; }
       const more = rowsOf(id).filter((x) => x !== r && (x.done > 0 || x.running || x.queued)).length;
       if (more) { text += ` +${more}`; title += `. Других озвучек: ${more} — список в окне «Озвучка без интернета»`; }
     }
-    return `<span class="lib-audio ${cls}" title="${esc(title)}">${esc(text)}</span>`;
+    return `<span class="lib-audio ${cls}" title="${esc(title)}">${icon ? `<svg><use href="#${icon}"/></svg>` : ""}${esc(text)}</span>`;
   }
   function updateAudioBadge(id) {
     const item = el.libList.querySelector(`.lib-item[data-id="${id}"] .lib-audio`);
@@ -2507,15 +2507,17 @@ window.addEventListener("error", (e) => {
   // buttons: [{ label, primary, value }] → промис со значением нажатой кнопки (null — закрыли).
   // beforeClose — для окон с несохранёнными изменениями: вызывается при закрытии (✕, «Отмена», фон, «Назад»),
   // промис false — окно остаётся открытым.
-  function ask(title, html, buttons, { closable = true, beforeClose = null } = {}) {
+  // top — окно с полями ввода: прижато к верху (клавиатура телефона его не закрывает)
+  function ask(title, html, buttons, { closable = true, beforeClose = null, top = false } = {}) {
     if (askDone) askDone(null);
+    askEl.box.classList.toggle("pr-open", top);
     askGuard = beforeClose;
     askEl.head.textContent = title;
     askEl.body.innerHTML = html;
     askEl.body.scrollTop = 0;
     askEl.close.hidden = !closable;
     askEl.actions.innerHTML = buttons.map((b, i) =>
-      `<button class="set-btn${b.primary ? " primary" : ""}" data-i="${i}">${esc(b.label)}</button>`).join("");
+      `<button class="set-btn${b.primary ? " primary" : ""}${b.danger ? " danger" : ""}" data-i="${i}">${esc(b.label)}</button>`).join("");
     askEl.actions.classList.toggle("col", buttons.length > 2); // много вариантов — каждый во всю ширину
     askEl.box.hidden = false;
     askEl.box.dataset.closable = closable ? "1" : "";
@@ -2615,7 +2617,7 @@ window.addEventListener("error", (e) => {
         "книги, прогресс чтения" + (audio ? " и вся их озвучка" : "") + ". Удаляются с этого устройства безвозвратно", !books, audio ? " sub danger" : " danger")}
       ${audio && info.busy ? '<p class="pr-hint">Озвучка, которая сейчас загружается, не удаляется (кроме «Вся скачанная озвучка» и «Вся библиотека»).</p>' : ""}
     </div>`;
-    const go = ask("Освободить место", html, [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, value: 1 }]);
+    const go = ask("Освободить место", html, [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, danger: true, value: 1 }]);
     const body = askEl.body;
     const box = (id) => body.querySelector("#" + id);
     const lib = box("spLib"), all = box("spAll");
@@ -2652,7 +2654,7 @@ window.addEventListener("error", (e) => {
     const sure = await ask(opts.library || opts.all ? "Удалить безвозвратно?" : "Удалить?",
       `<p>Отмечено к удалению:</p><ul class="sp-list">${items.join("")}</ul>
        <p><b>Это удалится с устройства безвозвратно</b> — отменить нельзя.${opts.library ? " Книги можно будет добавить заново только из файлов или каталога." : ""}</p>`,
-      [{ label: "Отмена", value: null }, { label: "Удалить безвозвратно", primary: true, value: 1 }]);
+      [{ label: "Отмена", value: null }, { label: "Удалить безвозвратно", primary: true, danger: true, value: 1 }]);
     if (!sure) return spaceDialog(opts);   // передумали — обратно в окно очистки, отметки те же
     try {
       if (opts.library) {
@@ -2788,8 +2790,6 @@ window.addEventListener("error", (e) => {
     }
     if (Pron.isOpen()) { Pron.back(); return true; }   // страница «Произношение»: на уровень выше / закрыть
     if (!el.dl.hidden) { closeDl(); return true; }
-    const menu = [...el.libList.querySelectorAll(".lib-actions")].find((a) => !a.hidden);
-    if (menu && el.lib.classList.contains("open")) { menu.hidden = true; resetActions(menu); return true; }
     if (el.lib.classList.contains("open")) {
       if (!el.setPanel.hidden || !el.catPanel.hidden) { showView("lib"); return true; }
       if (selecting) { setSelecting(false); return true; }
@@ -2875,7 +2875,7 @@ window.addEventListener("error", (e) => {
       `<label class="set-field"><span>Голос</span><select id="grpVoice">${el.voice.innerHTML}</select></label>
        <p>Книги озвучиваются по очереди: одна загружается, остальные — в ожидании загрузки. Уже загруженные фразы повторно не качаются.</p>`,
       [{ label: "Загрузить озвучку", primary: true, value: "load" }]
-        .concat(withAudio.length ? [{ label: `Удалить всю озвучку (${withAudio.length})`, value: "del" }] : []));
+        .concat(withAudio.length ? [{ label: `Удалить всю озвучку (${withAudio.length})`, danger: true, value: "del" }] : []));
     const sel = document.getElementById("grpVoice");
     if (sel) sel.value = el.voice.value;
     const act = await p;
@@ -2912,7 +2912,7 @@ window.addEventListener("error", (e) => {
     const ok = await ask("Удалить озвучку?",
       `<p>Удалить всю загруженную озвучку (все голоса) у ${list.length} ${plural(list.length, "книги", "книг", "книг")} — около ${fmtSize(bytes)}?</p>
        <p>Сами книги останутся, читать вслух их можно будет через сервер.</p>`,
-      [{ label: "Отмена", value: null }, { label: "Удалить озвучку", primary: true, value: "yes" }]);
+      [{ label: "Отмена", value: null }, { label: "Удалить озвучку", primary: true, danger: true, value: "yes" }]);
     if (ok !== "yes") return;
     for (const m of list) await Native.Audio.remove(m.id, null);
     await refreshAudio();
@@ -2957,7 +2957,7 @@ window.addEventListener("error", (e) => {
     const v = await ask("Отменить загрузку?",
       `<p>Очередь загрузки будет очищена (${n} ${plural(n, "книга", "книги", "книг")}). Уже загруженная озвучка сохранится.</p>
        <p>Чтобы продолжить потом, книги нужно будет выбрать заново.</p>`,
-      [{ label: "Вернуться", value: "back" }, { label: "Очистить очередь", primary: true, value: "clear" }], { closable: false });
+      [{ label: "Вернуться", value: "back" }, { label: "Очистить очередь", primary: true, danger: true, value: "clear" }], { closable: false });
     if (v === "clear") {
       await Native.Audio.cancelAll();
       reconnectShown = false;

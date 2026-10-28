@@ -42,6 +42,7 @@
     <symbol id="i-fwd30" viewBox="0 0 24 24"><path d="M19.4 9.5A8 8 0 1 0 20 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M20.4 4.8v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><text x="11.4" y="15.6" text-anchor="middle" font-size="8" font-weight="700" font-family="system-ui,sans-serif" fill="currentColor">30</text></symbol>
     <symbol id="i-chapters" viewBox="0 0 24 24"><path d="M9 6.5h11M9 12h11M9 17.5h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3.5 4.5l3 2-3 2z"/><circle cx="4.8" cy="12" r="1.3"/><circle cx="4.8" cy="17.5" r="1.3"/></symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   </svg>
 
@@ -148,7 +149,7 @@
     <div class="cat-view" id="catPanel" hidden>
       <div class="cat-tools">
         <input type="search" id="catSearch" placeholder="Поиск в каталоге" aria-label="Поиск в каталоге">
-        <button class="icon-btn" id="catRefresh" title="Обновить список">⟳</button>
+        <button class="icon-btn" id="catRefresh" title="Обновить список" aria-label="Обновить список"><svg><use href="#i-refresh"/></svg></button>
       </div>
       <div class="cat-list" id="catList"></div>
       <div class="cat-foot" id="catInfo"></div>

@@ -121,8 +121,8 @@
       </div>
       <nav class="prp-crumbs" aria-label="Путь"></nav>
       <div class="prp-tools">
-        <button class="set-btn prp-addf">+ Папка</button>
-        <button class="set-btn primary prp-addr">+ Правило</button>
+        <button class="set-btn prp-addf"><svg><use href="#i-plus"/></svg><span>Папка</span></button>
+        <button class="set-btn primary prp-addr"><svg><use href="#i-plus"/></svg><span>Правило</span></button>
         <button class="icon-btn prp-select" title="Выбрать несколько" aria-label="Выбрать несколько"><svg><use href="#i-select"/></svg></button>
         <input type="search" class="prp-search" placeholder="Поиск по всем папкам" aria-label="Поиск правил">
       </div>
@@ -132,7 +132,7 @@
         <span class="sel-count" aria-hidden="true"></span>
         <button class="sel-btn prp-all" title="Выбрать все" aria-label="Выбрать все"><svg><use href="#i-all"/></svg><span>Все</span></button>
         <button class="sel-btn prp-g-books" title="Где применяется…" aria-label="Где применяется" disabled><svg><use href="#i-books"/></svg><span>Книги</span></button>
-        <button class="sel-btn prp-g-move" title="Переместить…" aria-label="Переместить" disabled><svg><use href="#i-move"/></svg><span>Перенести</span></button>
+        <button class="sel-btn prp-g-move" title="Переместить…" aria-label="Переместить" disabled><svg><use href="#i-move"/></svg><span>Переместить</span></button>
         <button class="sel-btn danger prp-g-del" title="Удалить выбранное" aria-label="Удалить выбранное" disabled><svg><use href="#i-trash"/></svg><span>Удалить</span></button>
       </div>
       <div class="prp-io"><button class="set-btn prp-export">Экспорт</button><button class="set-btn prp-import">Импорт</button>
@@ -391,7 +391,7 @@
       const n = M.selectedRules(d, selection()).length, k = sel.folders.size;
       const what = [n ? nRules(n) : "", k ? nFolders(k) : ""].filter(Boolean).join(" и ");
       const ok = await ctx.ask("Удалить выбранное?", `<p>Будет удалено: ${esc(what)}${k ? " (вместе со всем, что в них лежит)" : ""}. Отменить нельзя.</p>`,
-        [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, value: 1 }]);
+        [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, danger: true, value: 1 }]);
       if (!ok) return;
       M.removeSelected(d, selection());
       setSelecting(false);
@@ -641,6 +641,7 @@
         ${items.map((it, i) => `<button class="pr-mi${it.danger ? " danger" : ""}" data-i="${i}">${esc(it.label)}</button>`).join("")}</div>`;
       const m = modal(title, html);
       ctx.askEl.box.classList.add("pr-small");
+      ctx.askEl.box.classList.remove("pr-open");   // меню — по центру, как все меню и подтверждения (полей ввода нет)
       m.p.finally(() => ctx.askEl.box.classList.remove("pr-small"));
       m.body.querySelectorAll(".pr-mi").forEach((b) => (b.onclick = () => ctx.askFinish({ v: items[Number(b.dataset.i)].value })));
       const r = await m.p;
@@ -648,9 +649,9 @@
     }
     async function ruleMenu(r) {
       const act = await menu(`${r.w} → ${r.s}`, esc(M.pathText(d, r.f)), [
-        { label: "Изменить", value: "edit" },
+        { label: "Изменить…", value: "edit" },
         { label: "Переместить…", value: "move" },
-        { label: "Удалить", value: "delete", danger: true },
+        { label: "Удалить…", value: "delete", danger: true },
       ]);
       if (act === "edit") return ruleModal(r);
       if (act === "move") {
@@ -662,7 +663,7 @@
       }
       if (act === "delete") {
         const ok = await ctx.ask(`Удалить правило «${r.w}»?`, `<p>${esc(r.w)} → ${esc(r.s)}</p>`,
-          [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, value: 1 }]);
+          [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, danger: true, value: 1 }]);
         if (!ok) return;
         M.removeRule(d, r.id);
         await commit();
@@ -672,7 +673,7 @@
       const n = M.rulesIn(d, f.id).length;
       const act = await menu(`Папка «${f.name}»`, `${esc(nRules(n))} · лежит ${esc(whereTo(f.parent))}`, [
         { label: "Открыть", value: "open" },
-        { label: "Переименовать", value: "rename" },
+        { label: "Переименовать…", value: "rename" },
         { label: "Где применяется (все правила)…", value: "books" },
         { label: "Переместить…", value: "move" },
         { label: "Удалить…", value: "delete", danger: true },
@@ -701,7 +702,7 @@
       const n = M.rulesIn(d, f.id).length, k = M.subtree(d, f.id).size - 1;
       if (!n && !k) {
         const ok = await ctx.ask(`Удалить папку «${f.name}»?`, "<p>Папка пустая.</p>",
-          [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, value: 1 }]);
+          [{ label: "Отмена", value: null }, { label: "Удалить", primary: true, danger: true, value: 1 }]);
         if (!ok) return;
         M.removeFolder(d, f.id, "all");
         return commit();
