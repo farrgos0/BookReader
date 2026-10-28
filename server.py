@@ -12,6 +12,8 @@ BookReader — локальный сервер озвучки на Silero TTS.
 Параметры командной строки важнее файла. Журнал сервера — там же, в папке logs.
 """
 
+import time as _time
+_T0 = _time.perf_counter()   # отсчёт времени запуска (журнал «[запуск N с]»)
 import argparse
 import hashlib
 import html
@@ -46,6 +48,14 @@ except ImportError:
 
 import audiocat
 import paths
+
+STARTING = True   # идёт запуск: этапы и медленные шаги каталога пишутся в журнал со временем
+
+
+def startup(msg):
+    """Строка журнала запуска со временем от старта процесса: видно, на чём сервер задерживается."""
+    if STARTING:
+        print(f"[запуск {_time.perf_counter() - _T0:6.1f} с] {msg}", flush=True)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(ROOT, "web")
@@ -788,6 +798,7 @@ class Catalog:
         self.root = root
         self.lock = threading.Lock()
         self.known = {}      # путь → (size, mtime, запись)
+        self.last_stats = ""
         self.by_id = {}
         os.makedirs(root, exist_ok=True)
         readme = os.path.join(root, README_NAME)
@@ -802,6 +813,8 @@ class Catalog:
 
     def scan(self):
         items, seen = [], set()
+        t_scan = _time.perf_counter()
+        stats = {"files": 0, "new": 0, "bytes": 0}
         for dirpath, dirnames, filenames in os.walk(self.root):
             dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
             for name in sorted(filenames):
@@ -816,19 +829,26 @@ class Catalog:
                 if st.st_size == 0:
                     continue  # пустой файл (ещё копируется или битый) — не показываем
                 seen.add(path)
+                stats["files"] += 1
                 with self.lock:
                     cached = self.known.get(path)
                 if cached and cached[0] == st.st_size and cached[1] == st.st_mtime:
                     if cached[2]:
                         items.append(cached[2])
                     continue
+                # время по шагам: чтение файла целиком (хэш), разбор архива, сборка, теги — медленные пишем в журнал
+                stats["new"] += 1
+                stats["bytes"] += st.st_size
+                t0 = _time.perf_counter()
                 h = _sha_file(path)
+                t_hash = _time.perf_counter() - t0
                 if h is None:
                     continue
                 rel = os.path.relpath(path, self.root)
                 folder = os.path.dirname(rel).replace("\\", "/")
                 stem = name[: -len(ext)]
                 serve = path
+                t1 = _time.perf_counter()
                 kind = "audio" if ext in audiocat.AUDIO_EXTS else None
                 zkind = audiocat.zip_kind(path) if ext == ".zip" else None
                 if zkind:
@@ -841,6 +861,7 @@ class Catalog:
                     built = self.built(path, ext, h) if ext in (".zip", ".rar", ".7z") else None
                 if isinstance(built, tuple) and built[1].get("kind") == "audio":
                     kind = "audio"
+                t_build = _time.perf_counter() - t1
                 if built is False:  # архив, из которого ничего не собрать (сообщение уже в окне сервера) — не повторяем
                     with self.lock:
                         self.known[path] = (st.st_size, st.st_mtime, None, None)
@@ -875,9 +896,16 @@ class Catalog:
                 }
                 if kind:
                     item["kind"] = "audio"
+                t_all = _time.perf_counter() - t0
+                if t_all >= 1.0:
+                    rel_s = os.path.relpath(path, self.root)
+                    print(f"Каталог: «{rel_s}» ({st.st_size / 1048576:.0f} МБ) — {t_all:.1f} с: чтение для номера {t_hash:.1f} с,"
+                          f" архив/сборка {t_build:.1f} с, название/теги {t_all - t_hash - t_build:.1f} с", flush=True)
                 with self.lock:
                     self.known[path] = (st.st_size, st.st_mtime, item, serve)
                 items.append(item)
+        self.last_stats = (f"файлов {stats['files']}, прочитано заново {stats['new']} ({stats['bytes'] / 1048576:.0f} МБ),"
+                           f" {_time.perf_counter() - t_scan:.1f} с")
         with self.lock:
             for p in list(self.known):
                 if p not in seen:
@@ -1572,6 +1600,7 @@ def start_log():
         clean_old_logs(folder, {"server.log", "install.log"})
         log = _RotatingLog(path)
         log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} запуск BookReader {VERSION} =====\n")
+        log.write(f"[запуск {_time.perf_counter() - _T0:6.1f} с] библиотеки Python загружены (numpy и модули BookReader)\n")
         sys.stdout = _Tee(sys.stdout, log)
         sys.stderr = _Tee(sys.stderr, log)
         return path
@@ -1619,16 +1648,21 @@ def main():
         except Exception:  # noqa: BLE001
             pass
 
-    global ENGLISH, SERVER_NAME, UPDATE_REPO
+    global ENGLISH, SERVER_NAME, UPDATE_REPO, STARTING
     ENGLISH = not args.no_english
     repo = str(cfg.get("update_repo") or "").strip()
     UPDATE_REPO = repo if re.fullmatch(r"[\w.-]+/[\w.-]+", repo) else DEFAULT_UPDATE_REPO
     SERVER_NAME = re.sub(r"\s+", " ", args.name).strip()[:60]
+    startup("настройки прочитаны")
     if ENGLISH:
         en_translit.preload(background=True)
 
+    startup("модель озвучки: загрузка…" if not args.fake else "модель озвучки: тестовый режим (--fake)")
     engine = FakeEngine() if args.fake else SileroEngine("cuda" if args.cuda else args.device)
-    synth = Synthesizer(engine, OpusEncoder())
+    startup("модель озвучки готова")
+    opus = OpusEncoder()
+    startup("сжатие Opus (ffmpeg) проверено")
+    synth = Synthesizer(engine, opus)
 
     # каталог: из настроек; иначе папка catalog рядом с программой, а если туда писать нельзя (Program Files) —
     # в папке данных пользователя
@@ -1636,8 +1670,12 @@ def main():
         CATALOG_DIR if os.path.isdir(CATALOG_DIR) or paths.can_write(ROOT) else os.path.join(paths.data_dir(), "catalog"))
     catalog = None if args.no_catalog else Catalog(catalog_dir)
     if catalog:
-        print(f"Каталог книг для клиентов: {catalog.root}  (найдено: {len(catalog.scan())})")
+        startup(f"каталог: просматриваю {catalog.root}…")
+        found = catalog.scan()
+        startup(f"каталог просмотрен: {catalog.last_stats}")
+        print(f"Каталог книг для клиентов: {catalog.root}  (найдено: {len(found)})")
     server = QuietServer((args.host, args.port), make_handler(synth, catalog))
+    startup("порт открыт")
     url = f"http://{LOOPBACK if args.host in ('0.0.0.0', '', LOOPBACK) else args.host}:{args.port}"
     print(f"BookReader запущен: {url}  (Ctrl+C — остановить)")
     print(f"Настройки: {paths.config_path()}" + (f"   Журнал: {log_path}" if log_path else ""))
@@ -1650,6 +1688,8 @@ def main():
             for ip in ips:
                 print(f"    {ip}:{args.port}")
             print("Если телефон не подключается — разрешите Python в брандмауэре Windows (частные сети).")
+    startup("сервер готов к работе")
+    STARTING = False
     if not args.no_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:
