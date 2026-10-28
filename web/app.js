@@ -38,7 +38,7 @@ window.addEventListener("error", (e) => {
     btnCatalog: $("btnCatalog"), catPanel: $("catPanel"), catSearch: $("catSearch"), catRefresh: $("catRefresh"),
     catList: $("catList"), catInfo: $("catInfo"),
     dlQueueBar: $("dlQueueBar"), btnSelect: $("btnSelect"), selBar: $("selBar"), selCount: $("selCount"), selAll: $("selAll"),
-    selShare: $("selShare"), selAudio: $("selAudio"), selDelete: $("selDelete"), libKind: $("libKind"),
+    selShare: $("selShare"), selAudio: $("selAudio"), selDelete: $("selDelete"), libKind: $("libKind"), btnHome: $("btnHome"),
   };
 
   // ---------- настройки ----------
@@ -1485,7 +1485,7 @@ window.addEventListener("error", (e) => {
   function sortedBooks() {
     const q = el.libSearch.value.trim().toLowerCase();
     const by = el.libSort.value;
-    const kind = el.libKind.hidden ? "all" : el.libKind.value;
+    const kind = libCache.some((m) => m.format === "audio") ? el.libKind.value : "all";
     let list = libCache.filter((m) => (kind === "all" || (kind === "audio") === (m.format === "audio")) &&
       (!q || (m.title + " " + (m.authors || []).join(" ") + " " + m.name).toLowerCase().includes(q)));
     const coll = new Intl.Collator("ru");
@@ -1533,10 +1533,8 @@ window.addEventListener("error", (e) => {
   // список книг: виртуальный (тысячи книг не тормозят); пока открыто меню книги — не перерисовываем
   const libVL = VList(el.libList, { frozen: () => !!el.libList.querySelector(".lib-actions:not([hidden])") });
   function renderLibrary() {
-    const hasAudio = libCache.some((m) => m.format === "audio");
-    if (el.libKind.hidden === hasAudio) el.libKind.hidden = !hasAudio;
     const list = sortedBooks();
-    el.libCount.textContent = libCache.length ? `${libCache.length}` : "";
+    if (!selecting && !el.libView.hidden) libTitle();
     if (list.length) libVL.set(list.map((m, i) => ({ key: m.id, est: 92, html: bookCard(m).replace('<div class="lib-item', `<div data-vi="${i}" class="lib-item`) })));
     else {
       libVL.set([]);
@@ -1575,7 +1573,7 @@ window.addEventListener("error", (e) => {
     const recent = byOpened.slice(1, 11);   // последняя — в карточке сверху
     el.recent.hidden = !recent.length;
     el.recentList.innerHTML = recent.map(tile).join("");
-    $("btnHome").hidden = !book && !Audiobook.active;
+    el.btnHome.hidden = !el.libView.hidden ? (!book && !Audiobook.active) : true;
   }
 
   // на стартовый экран: книга закрывается (место сохранено), чтение и аудиокнига — на паузу
@@ -1738,9 +1736,15 @@ window.addEventListener("error", (e) => {
     updateSelBar();
   }
   // заголовок панели: «Библиотека N» или, в режиме выбора, «Выбрано: N» (в панели внизу ему не хватает места)
+  // когда есть аудиокниги, заголовок — выбор «Библиотека / Книги / Аудиокниги» (без лишней строки в панели)
   function libTitle() {
-    if (selecting) { el.libHeadTitle.textContent = `Выбрано: ${selected.size}`; return; }
-    el.libHeadTitle.innerHTML = `Библиотека <span class="count" id="libCount">${libCache.length || ""}</span>`;
+    if (selecting) { el.libHeadTitle.textContent = `Выбрано: ${selected.size}`; el.libKind.hidden = true; return; }
+    const hasAudio = libCache.some((m) => m.format === "audio");
+    const kind = hasAudio ? el.libKind.value : "all";
+    const n = kind === "all" ? libCache.length : libCache.filter((m) => (m.format === "audio") === (kind === "audio")).length;
+    el.libHeadTitle.innerHTML = (hasAudio ? "" : "Библиотека ") + `<span class="count" id="libCount">${n || ""}</span>`;
+    if (hasAudio) el.libHeadTitle.prepend(el.libKind);
+    el.libKind.hidden = !hasAudio;
     el.libCount = document.getElementById("libCount") || el.libCount;
   }
   function updateSelBar() {
@@ -1751,6 +1755,8 @@ window.addEventListener("error", (e) => {
     el.selAll.title = allOn ? "Снять выбор" : "Выбрать все";
     el.selAll.querySelector("span").textContent = allOn ? "Снять" : "Все";
     [el.selShare, el.selAudio, el.selDelete].forEach((b) => (b.disabled = !n));
+    // озвучка — только для обычных книг: выбраны одни аудиокниги — кнопки нет
+    el.selAudio.hidden = n > 0 && [...selected].every((id) => (libCache.find((m) => m.id === id) || {}).format === "audio");
   }
   const selBooks = () => libCache.filter((m) => selected.has(m.id));
   // долгое нажатие на книгу (касание) — включить выбор и отметить её, как в Telegram
@@ -1884,7 +1890,7 @@ window.addEventListener("error", (e) => {
     const b = e.target.closest(".recent-item, .home-card");
     if (b) openFromLibrary(b.dataset.id);
   });
-  $("btnHome").onclick = () => goHome();
+  el.btnHome.onclick = () => goHome();
   $("homeOpenLib").onclick = () => { showSettings(false); openPanel(el.lib); };
 
 
@@ -2858,10 +2864,14 @@ window.addEventListener("error", (e) => {
 
   // ---------- групповая озвучка (выбор нескольких книг → «Озвучка») ----------
   async function groupAudio() {
-    const list = selBooks();
-    if (!list.length) return;
+    const picked = selBooks();
+    const list = picked.filter((m) => m.format !== "audio");   // у аудиокниг свой звук — их не озвучиваем
+    const nAudio = picked.length - list.length;
+    if (!list.length) return toast("Выбраны только аудиокниги — озвучивать нечего");
     const withAudio = list.filter((m) => rowsOf(m.id).some((r) => r.done > 0 || r.running || r.queued));
-    const p = ask(`Озвучка: ${list.length} ${plural(list.length, "книга", "книги", "книг")}`,
+    const nb = (n) => `${n} ${plural(n, "книга", "книги", "книг")}`, na = (n) => `${n} ${plural(n, "аудиокнига", "аудиокниги", "аудиокниг")}`;
+    const p = ask(`Озвучка: ${nb(list.length)}`,
+      (nAudio ? `<p class="grp-note">Выбрано: ${nb(list.length)} и ${na(nAudio)}. ${list.length % 10 === 1 && list.length % 100 !== 11 ? "Будет озвучена" : "Будут озвучены"} ${nb(list.length)}.</p>` : "") +
       `<label class="set-field"><span>Голос</span><select id="grpVoice">${el.voice.innerHTML}</select></label>
        <p>Книги озвучиваются по очереди: одна загружается, остальные — в ожидании загрузки. Уже загруженные фразы повторно не качаются.</p>`,
       [{ label: "Загрузить озвучку", primary: true, value: "load" }]
@@ -3433,7 +3443,8 @@ window.addEventListener("error", (e) => {
     if (v !== "lib" && selecting) setSelecting(false);
     el.setBack.hidden = v === "lib";
     if (v === "lib") libTitle();
-    else el.libHeadTitle.textContent = v === "settings" ? "Настройки" : "Каталог сервера";
+    else { el.libHeadTitle.textContent = v === "settings" ? "Настройки" : "Каталог сервера"; el.libKind.hidden = true; }
+    el.btnHome.hidden = v !== "lib" || (!book && !Audiobook.active);
     if (v === "catalog") loadCatalog();
   }
   const showSettings = (on) => showView(on ? "settings" : "lib");

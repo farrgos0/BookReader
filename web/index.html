@@ -66,11 +66,16 @@
     <div class="panel-head">
       <button class="icon-btn back" id="setBack" title="К списку книг" hidden>‹</button>
       <span id="libHeadTitle">Библиотека <span class="count" id="libCount"></span></span>
+      <select id="libKind" class="lib-kind" aria-label="Показывать" hidden>
+        <option value="all">Библиотека</option>
+        <option value="text">Книги</option>
+        <option value="audio">Аудиокниги</option>
+      </select>
+      <button class="icon-btn" id="btnHome" title="Главная — стартовый экран" aria-label="Главная" hidden><svg><use href="#i-home"/></svg></button>
       <button class="icon-btn" id="btnSelect" title="Выбрать несколько" aria-label="Выбрать несколько"><svg><use href="#i-select"/></svg></button>
       <button class="icon-btn" id="libClose" title="Закрыть">✕</button>
     </div>
     <div class="lib-view" id="libView">
-    <button class="lib-home" id="btnHome" hidden><svg><use href="#i-home"/></svg><span>Главная</span></button>
     <div class="lib-tools">
       <label class="btn-add" title="Добавить книги">
         <svg><use href="#i-plus"/></svg><span>Добавить</span>
@@ -78,11 +83,6 @@
       </label>
       <button class="btn-cat tts-only" id="btnCatalog" title="Книги из папки catalog на сервере"><svg><use href="#i-cloud"/></svg><span>Каталог</span></button>
       <input type="search" id="libSearch" placeholder="Поиск" aria-label="Поиск">
-      <select id="libKind" aria-label="Показывать" hidden>
-        <option value="all">Все книги</option>
-        <option value="text">Книги</option>
-        <option value="audio">Аудиокниги</option>
-      </select>
       <select id="libSort" aria-label="Сортировка">
         <option value="recent">Недавние</option>
         <option value="added">Добавленные</option>

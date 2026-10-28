@@ -499,7 +499,7 @@ html.native .set-field.native-only { display: flex !important; }
   .reader h1, .reader h2, .reader h3, .reader .book-intro .bi-title { font-size: 1.15em !important; margin: .6em 0 .4em !important; }
   .lib-foot { padding: 6px 8px; gap: 4px; min-height: 0; }
   .lib-foot .btn-settings { height: 32px; font-size: 13px; }
-  #libUsage, #libClear, .lib-tools #libSearch, .lib-tools #libSort, .lib-tools #libKind, .lib-foot-info { display: none !important; }
+  #libUsage, #libClear, .lib-tools #libSearch, .lib-tools #libSort, .lib-foot-info { display: none !important; }
   .lib-item { padding: 6px 8px; }
   .lib-cover { width: 30px; height: 42px; }
 }
@@ -872,8 +872,14 @@ html.ab-mode #player.tts-only { display: block !important; }
 
 /* библиотека: значок аудиокниги, фильтр «Книги / Аудиокниги» рядом с сортировкой */
 .lib-ab { width: 14px; height: 14px; flex: none; color: var(--accent); }
-.lib-tools #libKind { grid-column: 1 / -1; grid-row: 3; }
-.lib-tools #libKind[hidden] { display: none; }
+/* «Библиотека / Книги / Аудиокниги» — вместо заголовка панели (только когда есть аудиокниги), лишней строки нет */
+.lib-kind { font: inherit; font-weight: 650; color: var(--ink); background: transparent; border: 0; padding: 4px 22px 4px 0; margin: -4px 0;
+  cursor: pointer; max-width: 100%; appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 9px top 55%, right 4px top 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+.lib-kind[hidden] { display: none; }
+.lib-kind option { color: var(--ink); background: var(--surface); }
+html.native #selAudio.sel-btn.native-only[hidden] { display: none !important; }
 
 /* ---------- стартовый экран ---------- */
 .home-last { width: min(860px, 100%); }
@@ -893,12 +899,6 @@ html.ab-mode #player.tts-only { display: block !important; }
 .home-empty p { margin: 4px 0; color: var(--muted); line-height: 1.5; }
 .home-empty .formats { font-size: 12px; opacity: .8; }
 .home-empty .set-btn { margin-top: 12px; padding: 0 18px; }
-/* «Главная» вверху библиотеки — когда открыта книга */
-.lib-home { display: flex; align-items: center; gap: 10px; margin: 10px 14px 0; height: 40px; padding: 0 12px; border: 1px solid var(--line);
-  border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; }
-.lib-home[hidden] { display: none; }
-.lib-home:hover { background: var(--hl-soft); }
-.lib-home svg { width: 20px; height: 20px; }
 @media (max-width: 760px) {
   .empty { gap: 22px; padding: 14px 14px 24px; }
   .home-card { padding: 12px; gap: 14px; }
