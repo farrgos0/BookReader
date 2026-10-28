@@ -496,6 +496,16 @@
     return !!last;
   }
 
+  // браузер: аудиокнига из каталога сервера — сразу в библиотеку (её и скачивали ради этого)
+  async function addFromCatalog(blob, item) {
+    const book = await A.readBook(A.blobReader(blob), item.name);
+    const cover = await readCover(book);
+    const est = await ctx.Library.estimate();
+    const free = est && est.quota ? est.quota - est.usage : 0;
+    if (free && blob.size > free) throw new Error("не хватает места в хранилище браузера");
+    return ctx.Library.addAudio(blob, item.name, book, cover, item.id);
+  }
+
   // приложение: файлы уже в библиотеке (C# скопировал их) → разобрать; несколько — собрать в одну книгу
   async function importNative(picked) {
     const L = ctx.Library;
@@ -543,7 +553,7 @@
     init(c) { ctx = c; bind(); },
     open, unload, forget, reset, rename, mediaAction, key, play, pause, toggle, skip, sleepDialog, setRate, setVolume,
     seekInput, seekChange, renderBar,
-    split, importBrowser, importNative,
+    split, importBrowser, importNative, addFromCatalog,
     get active() { return !!cur; },
     get current() { return cur ? cur.id : null; },
     get playing() { return playing; },

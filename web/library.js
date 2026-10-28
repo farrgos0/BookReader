@@ -133,8 +133,9 @@
       return meta;
     },
     // аудиокнига: файл хранится как Blob (сотни мегабайт в память не читаются); номер — по размеру и кускам файла
-    async addAudio(blob, name, book, cover) {
-      const id = await audioId(blob, name);
+    // id — номер из каталога сервера (SHA-256 файла, как у приложения): книга из каталога узнаётся как уже скачанная
+    async addAudio(blob, name, book, cover, id) {
+      id = id || await audioId(blob, name);
       const existing = await this.get(id);
       if (existing) {
         await this.update(id, { openedAt: Date.now() });

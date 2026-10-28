@@ -44,6 +44,7 @@ except ImportError:
                      "он поставит всё нужное. Или вручную: python -m pip install -r requirements.txt\n")
     sys.exit(3)
 
+import audiocat
 import paths
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -696,7 +697,7 @@ FORMAT_LABEL = {".fb2.zip": "FB2", ".fb2": "FB2", ".epub": "EPUB", ".mobi": "MOB
 
 def _book_ext(name):
     low = name.lower()
-    for e in BOOK_EXTS:
+    for e in BOOK_EXTS + audiocat.AUDIO_EXTS:
         if low.endswith(e):
             return e
     return None
@@ -796,6 +797,7 @@ class Catalog:
                         "Их видно в BookReader: кнопка «Каталог» в списке книг (на телефоне и в браузере).\n"
                         "Книга, разбитая на файлы по главам, — положите её архивом (ZIP, RAR или 7z): сервер сам соберёт из него\n"
                         "одну книгу FB2 (файлы по порядку имён, каждый — глава), и клиенты скачают уже готовую книгу.\n"
+                        "Аудиокниги (MP3, M4B, OGG, OPUS, FLAC, WAV) — файлом или архивом с частями: клиенты слушают их без сервера.\n"
                         "Ваша личная библиотека в браузере и на телефоне серверу не передаётся и отсюда не видна.\n")
 
     def scan(self):
@@ -827,7 +829,18 @@ class Catalog:
                 folder = os.path.dirname(rel).replace("\\", "/")
                 stem = name[: -len(ext)]
                 serve = path
-                built = self.built(path, ext, h) if ext in (".zip", ".rar", ".7z") else None
+                kind = "audio" if ext in audiocat.AUDIO_EXTS else None
+                zkind = audiocat.zip_kind(path) if ext == ".zip" else None
+                if zkind:
+                    kind = "audio"
+                if zkind == "audio-repack":
+                    built = self.built_audio(path, h, lambda out: audiocat.repack_zip(path, out))
+                elif kind:
+                    built = None
+                else:
+                    built = self.built(path, ext, h) if ext in (".zip", ".rar", ".7z") else None
+                if isinstance(built, tuple) and built[1].get("kind") == "audio":
+                    kind = "audio"
                 if built is False:  # архив, из которого ничего не собрать (сообщение уже в окне сервера) — не повторяем
                     with self.lock:
                         self.known[path] = (st.st_size, st.st_mtime, None, None)
@@ -839,6 +852,15 @@ class Catalog:
                     title, authors = info["title"], info["authors"]
                     name, fmt = info.get("name") or stem + ".fb2", info.get("format") or "FB2 · " + _chapters_label(info["chapters"])
                     size = os.path.getsize(serve)
+                elif kind:
+                    # аудиокнига: название и автор из тегов (книга из частей — по первой части)
+                    if zkind:
+                        tag, parts = audiocat.zip_tags(path)
+                        fmt = audiocat.label(parts[0]) if parts else "ZIP · аудио"
+                    else:
+                        tag, fmt = audiocat.tags(path), audiocat.label(name)
+                    title, authors = audiocat.book_info(tag, stem.replace("_", " "))
+                    size = st.st_size
                 else:
                     title, authors = book_meta(path, ext)
                     fmt, size = FORMAT_LABEL.get(ext, ext.strip(".").upper()), st.st_size
@@ -851,6 +873,8 @@ class Catalog:
                     "format": fmt,
                     "size": size, "mtime": int(st.st_mtime),
                 }
+                if kind:
+                    item["kind"] = "audio"
                 with self.lock:
                     self.known[path] = (st.st_size, st.st_mtime, item, serve)
                 items.append(item)
@@ -890,6 +914,10 @@ class Catalog:
             if len(names) < 2:
                 if ext == ".zip" or not names:
                     if ext != ".zip":
+                        # RAR/7z без книг — может быть аудиокнига: распаковать и переложить в ZIP без сжатия
+                        audio = self.built_audio(path, h, lambda out: audiocat.pack_archive(path, out))
+                        if audio:
+                            return audio
                         print(f"Каталог: в архиве «{label}» нет книг — пропускаю")
                         return False
                     with open(meta_path, "w", encoding="utf-8") as f:
@@ -917,6 +945,49 @@ class Catalog:
         except Exception as e:  # noqa: BLE001
             print(f"Каталог: архив «{label}» не собран: {e}")
             return False
+
+    def built_audio(self, path, h, make):
+        """Аудиокнига, переложенная в ZIP без сжатия (из сжатого ZIP, RAR/7z или папки): (путь, сведения) или None."""
+        import json
+        key = hashlib.sha1(f"{h.hexdigest()}:audio{audiocat.BUILD}".encode()).hexdigest()[:20]
+        out_dir = os.path.join(paths.data_dir(), "catalog-built")
+        meta_path = os.path.join(out_dir, key + ".json")
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, encoding="utf-8") as f:
+                    info = json.load(f)
+                if not info.get("file"):
+                    return None
+                if os.path.exists(os.path.join(out_dir, info["file"])):
+                    return os.path.join(out_dir, info["file"]), info
+            except (OSError, ValueError, KeyError):
+                pass
+        os.makedirs(out_dir, exist_ok=True)
+        label = os.path.relpath(path, self.root)
+        out = os.path.join(out_dir, key + ".zip")
+        try:
+            print(f"Каталог: перекладываю аудиокнигу «{label}» в ZIP без сжатия...")
+            if not make(out):
+                with open(meta_path, "w", encoding="utf-8") as f:
+                    json.dump({"file": None}, f)
+                return None
+            tag, parts = audiocat.zip_tags(out)
+            stem = os.path.basename(path.rstrip("/\\"))
+            stem = re.sub(r"\.(zip|rar|7z)$", "", stem, flags=re.I)
+            title, authors = audiocat.book_info(tag, stem.replace("_", " "))
+            info = {"file": key + ".zip", "name": stem + ".zip", "title": title, "authors": authors, "kind": "audio",
+                    "format": audiocat.label(parts[0]) if parts else "ZIP · аудио", "chapters": len(parts)}
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(info, f, ensure_ascii=False)
+            print(f"  готово: «{title}», частей: {len(parts)}")
+            return out, info
+        except Exception as e:  # noqa: BLE001
+            try:
+                os.remove(out)
+            except OSError:
+                pass
+            print(f"Каталог: аудиокнига «{label}» не переложена: {e}")
+            return None
 
     def path_of(self, book_id):
         with self.lock:

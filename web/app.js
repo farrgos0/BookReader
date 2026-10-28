@@ -2278,7 +2278,7 @@ window.addEventListener("error", (e) => {
         <div class="cat-info">
           <div class="cat-title">${esc(it.title)}</div>
           <div class="cat-author">${esc((it.authors || []).join(", ") || "Автор не указан")}</div>
-          <div class="cat-meta"><span class="badge">${esc(it.format)}</span>${fmtSize(it.size || 0)}</div>
+          <div class="cat-meta">${it.kind === "audio" ? '<svg class="lib-ab" aria-label="Аудиокнига"><use href="#i-voice"/></svg>' : ""}<span class="badge">${esc(it.format)}</span>${fmtSize(it.size || 0)}</div>
         </div>
         <button class="cat-btn${inLib ? " have" : ""}" data-act="${inLib ? "open" : "get"}"${busy ? " disabled" : ""}>${busy ? "Загрузка…" : inLib ? "Открыть" : "Скачать"}</button>
       </div>` });
@@ -2296,12 +2296,14 @@ window.addEventListener("error", (e) => {
     try {
       if (Native) {
         const res = await Native.catalogFetch(it.id, it.name);
-        await importNative([res]);
+        if (it.kind === "audio") await Audiobook.importNative([res]);
+        else await importNative([res]);
       } else {
         const r = await fetch("api/catalog/file/" + it.id);
         if (!r.ok) throw new Error(await httpError(r, "catalog-file"));
-        const blob = await r.blob();
-        await addFiles([new File([blob], it.name, { type: blob.type })], false);
+        const blob = await readWithProgress(r, it);
+        if (it.kind === "audio") await Audiobook.addFromCatalog(blob, it);
+        else await addFiles([new File([blob], it.name, { type: blob.type })], false);
       }
       await refreshLibrary();
       toast(`«${it.title}» — в библиотеке`);
@@ -2310,6 +2312,22 @@ window.addEventListener("error", (e) => {
     }
     catBusy.delete(it.id);
     renderCatalog();
+  }
+  // скачивание из каталога в браузере: большие файлы (аудиокниги) — с процентами
+  async function readWithProgress(r, it) {
+    const total = Number(r.headers.get("Content-Length")) || it.size || 0;
+    if (!r.body || !r.body.getReader || total < 8 * 1024 * 1024) return r.blob();
+    const rd = r.body.getReader(), parts = [];
+    let got = 0, shown = -1;
+    for (;;) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      parts.push(value);
+      got += value.length;
+      const pct = Math.floor((got / total) * 100);
+      if (pct !== shown && pct % 2 === 0) { shown = pct; toast(`«${it.title}»: скачано ${pct}%`, 8000); }
+    }
+    return new Blob(parts);
   }
   el.btnCatalog.onclick = () => showView("catalog");
   el.catRefresh.onclick = () => loadCatalog();
