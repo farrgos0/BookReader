@@ -836,4 +836,8 @@ html.scroll-lock .to-reading, html.scroll-lock .undo-bar { display: none; }
 html.autonomous .tts-only.tts-only.tts-only { display: none !important; }
 .auto-only { display: none !important; }
 html.autonomous .auto-only.auto-only { display: block !important; }
-html.autonomous .lib-tools .btn-add { grid-column: 1 / -1; }   /* «Каталог» скрыт — «Добавить» во всю ширину */
+html.autonomous .lib-tools .btn-add { grid-column: 1 / -1; }
+/* автономный режим — только чтение: ни места озвучки, ни выделения фразы касанием */
+html.autonomous .seg, html.autonomous .seg:hover, html.autonomous .seg.current, html.autonomous .seg.pick {
+  background: none; color: inherit; outline: none; cursor: auto;
+}   /* «Каталог» скрыт — «Добавить» во всю ширину */

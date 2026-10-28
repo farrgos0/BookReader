@@ -613,7 +613,8 @@ window.addEventListener("error", (e) => {
 
   function setPick(i) {
     if (segs[pick]) segs[pick].node.classList.remove("pick");
-    pick = i >= 0 && i < segs.length && i !== cur ? i : -1;
+    // автономный режим: озвучки нет — касание фразы ничего не выделяет
+    pick = i >= 0 && i < segs.length && i !== cur && modeAllows("tts") ? i : -1;
     if (pick >= 0) segs[pick].node.classList.add("pick");
     el.play.title = pick >= 0 ? "Читать с выбранной фразы" : "Воспроизвести / пауза (пробел)";
   }
@@ -2367,6 +2368,7 @@ window.addEventListener("error", (e) => {
     document.documentElement.classList.toggle("autonomous", autonomous());
     if (autonomous()) {
       if (playing) pause();
+      setPick(-1);
       setWarn(null);
       if (!el.catPanel.hidden) showView("lib");
       closeDl();
