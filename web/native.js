@@ -112,6 +112,14 @@
       const meta = { title: book.title, authors: book.authors, format: book.format, formatLabel: book.formatLabel, cover: await thumbnail(book.cover) };
       return json("LibFinishAdd", token, JSON.stringify(meta));
     },
+    // чтение файла кусками (аудиокниги: теги, главы) — без загрузки всего файла через мост
+    async reader(id) {
+      const info = await json("LibFileInfo", id);
+      if (!info) return null;
+      return AudioMeta.cachedReader({ size: info.size, read: async (off, len) => (len > 0 ? b64Bytes(await callRaw("LibReadChunk", id, off, Math.min(len, info.size - off))) : new Uint8Array(0)) });
+    },
+    // собрать аудиокнигу (несколько файлов или архив со сжатием) в один ZIP без сжатия: { id, name, isNew }
+    packAudio: (ids, name) => jsonAsync("LibAudioPackAsync", JSON.stringify(ids), name),
     remove: (id) => call("LibRemove", id),
     clear: () => call("LibClear"),
     estimate: () => json("LibEstimate"),
@@ -180,9 +188,22 @@
     coverage: async (bookId, voice, starts) => (await jsonAsync("PreloadCoverageAsync", bookId, voice, JSON.stringify(starts))) || [], // [[скачано, всего], ...]
   };
 
+  // ---------- плеер аудиокниг (системный плеер Android, работает в фоне) ----------
+  const Ab = {
+    // book: { id, title, authors, cover, parts: [{ off, size, duration, mime }], chapters: [{ title, at }] }
+    open: (book) => call("AbOpen", JSON.stringify(book)),
+    play: (at, rate) => call("AbPlay", at, rate),     // at — секунды от начала книги
+    pause: () => call("AbPause"),
+    seek: (at) => call("AbSeek", at),
+    setRate: (r) => call("AbRate", r),
+    sleep: (minutes, chapterEnd) => call("AbSleep", minutes, chapterEnd ? "1" : "0"),   // 0 — выключить
+    stop: () => call("AbStop"),
+    state: () => json("AbState"),   // { bookId, at, playing, loading, ended, sleepLeft, error }
+  };
+
   const handlers = {};
   window.Native = {
-    call, json, Player, Audio, handlers,
+    call, json, Player, Audio, Ab, handlers,
     serverInfo: () => jsonAsync("ServerInfoAsync"),
     openSettings: (find) => call("OpenSettings", find ? "true" : "false"),
     getPref: (k) => call("GetPref", k),
@@ -242,7 +263,8 @@
     onEnded: () => fire("onEnded"),
     onSleep: () => fire("onSleep"),
     onServerChanged: () => fire("onServerChanged"),
-    onPreload: (st) => fire("onPreload", st),   // { bookId, rows: [...] }
+    onPreload: (st) => fire("onPreload", st),
+    onAb: (st) => fire("onAb", st),             // плеер аудиокниг: { bookId, at, playing, loading, ended, sleepLeft, error }   // { bookId, rows: [...] }
     // кнопка «Назад» Android: "handled" — закрыли что-то в читалке, "exit" — закрывать нечего
     onBack: () => { try { return handlers.onBack ? handlers.onBack() : "exit"; } catch (e) { console.error(e); return "exit"; } },
     toast: (msg) => fire("toast", String(msg || "")),

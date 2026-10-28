@@ -38,6 +38,9 @@
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-voice" viewBox="0 0 24 24"><path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="3.5" y="13.5" width="4" height="6.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="16.5" y="13.5" width="4" height="6.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-back15" viewBox="0 0 24 24"><path d="M4.6 9.5A8 8 0 1 1 4 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M3.6 4.8v5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><text x="12.6" y="15.6" text-anchor="middle" font-size="8" font-weight="700" font-family="system-ui,sans-serif" fill="currentColor">15</text></symbol>
+    <symbol id="i-fwd30" viewBox="0 0 24 24"><path d="M19.4 9.5A8 8 0 1 0 20 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M20.4 4.8v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><text x="11.4" y="15.6" text-anchor="middle" font-size="8" font-weight="700" font-family="system-ui,sans-serif" fill="currentColor">30</text></symbol>
+    <symbol id="i-chapters" viewBox="0 0 24 24"><path d="M9 6.5h11M9 12h11M9 17.5h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3.5 4.5l3 2-3 2z"/><circle cx="4.8" cy="12" r="1.3"/><circle cx="4.8" cy="17.5" r="1.3"/></symbol>
     <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   </svg>
 
@@ -69,10 +72,15 @@
     <div class="lib-tools">
       <label class="btn-add" title="Добавить книги">
         <svg><use href="#i-plus"/></svg><span>Добавить</span>
-        <input type="file" id="libFiles" accept=".fb2,.zip,.epub,.txt,.md,.html,.htm,.xhtml,.docx,.odt,.rtf,.mobi,.azw,.azw3,.prc,.pdf" multiple hidden>
+        <input type="file" id="libFiles" accept=".fb2,.zip,.epub,.txt,.md,.html,.htm,.xhtml,.docx,.odt,.rtf,.mobi,.azw,.azw3,.prc,.pdf,.mp3,.m4b,.m4a,.mp4,.ogg,.oga,.opus,.flac,.wav" multiple hidden>
       </label>
       <button class="btn-cat tts-only" id="btnCatalog" title="Книги из папки catalog на сервере"><svg><use href="#i-cloud"/></svg><span>Каталог</span></button>
       <input type="search" id="libSearch" placeholder="Поиск" aria-label="Поиск">
+      <select id="libKind" aria-label="Показывать" hidden>
+        <option value="all">Все книги</option>
+        <option value="text">Книги</option>
+        <option value="audio">Аудиокниги</option>
+      </select>
       <select id="libSort" aria-label="Сортировка">
         <option value="recent">Недавние</option>
         <option value="added">Добавленные</option>
@@ -90,6 +98,13 @@
       <button class="sel-btn" id="selShare" title="Поделиться выбранными" aria-label="Поделиться выбранными"><svg><use href="#i-share"/></svg><span>Файлы</span></button>
       <button class="sel-btn native-only tts-only" id="selAudio" title="Озвучка выбранных: загрузить или удалить" aria-label="Озвучка выбранных"><svg><use href="#i-voice"/></svg><span>Озвучка</span></button>
       <button class="sel-btn danger" id="selDelete" title="Удалить выбранные книги" aria-label="Удалить выбранные книги"><svg><use href="#i-trash"/></svg><span>Удалить</span></button>
+    </div>
+    <div class="ab-mini" id="abMini" hidden>
+      <button class="ab-mini-open" id="abMiniOpen" title="Открыть плеер аудиокниги">
+        <span class="lib-cover" id="abMiniCover"></span>
+        <span class="ab-mini-info"><b id="abMiniTitle"></b><small id="abMiniSub"></small></span>
+      </button>
+      <button class="play-btn ab-mini-play" id="abMiniPlay" title="Слушать"><svg class="ic-play"><use href="#i-play"/></svg><svg class="ic-pause"><use href="#i-pause"/></svg></button>
     </div>
     <div class="lib-foot">
       <button class="btn-settings" id="btnOpenSettings"><svg><use href="#i-gear"/></svg><span>Настройки</span></button>
@@ -159,11 +174,11 @@
   <main id="main">
     <section class="empty" id="empty">
       <div class="drop" id="drop">
-        <input type="file" id="fileInput" accept=".fb2,.zip,.epub,.txt,.md,.html,.htm,.xhtml,.docx,.odt,.rtf,.mobi,.azw,.azw3,.prc,.pdf" multiple hidden>
+        <input type="file" id="fileInput" accept=".fb2,.zip,.epub,.txt,.md,.html,.htm,.xhtml,.docx,.odt,.rtf,.mobi,.azw,.azw3,.prc,.pdf,.mp3,.m4b,.m4a,.mp4,.ogg,.oga,.opus,.flac,.wav" multiple hidden>
         <div class="drop-mark"><svg><use href="#i-books"/></svg></div>
         <h1>Откройте книгу</h1>
         <p>Перетащите сюда файлы или нажмите, чтобы выбрать.</p>
-        <p class="formats">FB2 · EPUB · MOBI/AZW3 · PDF · DOCX · ODT · RTF · TXT · HTML · MD</p>
+        <p class="formats">FB2 · EPUB · MOBI/AZW3 · PDF · DOCX · ODT · RTF · TXT · HTML · MD<br>Аудиокниги: MP3 · M4B · OGG · OPUS · FLAC · WAV</p>
         <p class="hint">Книги сохраняются в библиотеке браузера. Озвучка — локально, голосами Silero.</p>
       </div>
       <div class="recent" id="recent" hidden>
@@ -182,6 +197,49 @@
       <button class="page-btn" id="pageFwd" title="Следующая страница (→)"><span>Вперёд</span><svg><use href="#i-chev-r"/></svg></button>
     </div>
   </main>
+
+  <!-- плеер аудиокниги (шаг 8): поверх книги, работает в любом режиме -->
+  <section class="ab" id="ab" hidden aria-label="Аудиокнига">
+    <div class="ab-head">
+      <button class="icon-btn" id="abBack" title="Свернуть плеер" aria-label="Свернуть плеер"><svg><use href="#i-chev-l"/></svg></button>
+      <span class="ab-head-title">Аудиокнига</span>
+      <button class="icon-btn" id="abLib" title="Книги и настройки" aria-label="Книги и настройки"><svg><use href="#i-books"/></svg></button>
+    </div>
+    <div class="ab-body">
+      <div class="ab-cover" id="abCover"></div>
+      <div class="ab-meta">
+        <div class="ab-title" id="abTitle"></div>
+        <div class="ab-author" id="abAuthor"></div>
+      </div>
+      <button class="ab-chapter" id="abChapter" title="Список глав"></button>
+      <div class="ab-chnum" id="abChNum"></div>
+      <div class="ab-seek">
+        <input type="range" id="abSeek" min="0" max="1000" value="0" step="1" aria-label="Позиция в главе">
+        <div class="ab-times"><span id="abPos">0:00</span><span id="abLeft">−0:00</span></div>
+      </div>
+      <div class="ab-ctrl">
+        <button class="icon-btn" id="abPrevCh" title="Предыдущая глава" aria-label="Предыдущая глава"><svg><use href="#i-prev"/></svg></button>
+        <button class="icon-btn ab-skip" id="abBack15" title="Назад на 15 секунд (←)" aria-label="Назад на 15 секунд"><svg><use href="#i-back15"/></svg></button>
+        <button class="play-btn ab-play" id="abPlay" title="Слушать (пробел)">
+          <svg class="ic-play"><use href="#i-play"/></svg>
+          <svg class="ic-pause"><use href="#i-pause"/></svg>
+          <span class="spinner"></span>
+        </button>
+        <button class="icon-btn ab-skip" id="abFwd30" title="Вперёд на 30 секунд (→)" aria-label="Вперёд на 30 секунд"><svg><use href="#i-fwd30"/></svg></button>
+        <button class="icon-btn" id="abNextCh" title="Следующая глава" aria-label="Следующая глава"><svg><use href="#i-next"/></svg></button>
+      </div>
+      <div class="ab-extra">
+        <label class="field" title="Скорость"><select id="abRate" aria-label="Скорость"></select></label>
+        <button class="icon-btn sleep-btn" id="abSleep" title="Таймер сна" aria-label="Таймер сна"><svg><use href="#i-moon"/></svg></button>
+        <button class="icon-btn" id="abChBtn" title="Главы" aria-label="Главы"><svg><use href="#i-chapters"/></svg></button>
+      </div>
+      <div class="ab-total" id="abTotal"></div>
+    </div>
+    <div class="ab-chapters" id="abChapters" hidden>
+      <div class="panel-head"><span>Главы</span><button class="icon-btn" id="abChClose" title="Закрыть">✕</button></div>
+      <div class="ab-ch-list" id="abChList"></div>
+    </div>
+  </section>
 
   <!-- место чтения ушло с экрана — вернуться; переход во время чтения — отменить -->
   <button class="to-reading tts-only" id="toReading" hidden title="Вернуться к месту, где идёт чтение"><svg><use href="#i-locate"/></svg><span>К месту чтения</span></button>
@@ -279,12 +337,14 @@
   <script src="zip.js"></script>
   <script src="fb2.js"></script>
   <script src="formats.js"></script>
+  <script src="audiometa.js"></script>
   <script src="library.js"></script>
   <script src="legal.js"></script>
   <script src="native.js"></script>
   <script src="longpress.js"></script>
   <script src="pron-model.js"></script>
   <script src="pron.js"></script>
+  <script src="audiobook.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

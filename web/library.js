@@ -60,7 +60,34 @@
     });
   }
 
+  async function audioId(blob, name) {
+    const N = 256 * 1024;
+    const head = new Uint8Array(await blob.slice(0, N).arrayBuffer());
+    const tail = new Uint8Array(await blob.slice(Math.max(0, blob.size - N)).arrayBuffer());
+    const sig = new TextEncoder().encode(blob.size + "|");
+    const all = new Uint8Array(sig.length + head.length + tail.length);
+    all.set(sig); all.set(head, sig.length); all.set(tail, sig.length + head.length);
+    try {
+      const h = await crypto.subtle.digest("SHA-256", all);
+      return "a" + Array.from(new Uint8Array(h).slice(0, 10)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (_) {
+      return "a" + (name + blob.size).split("").reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7).toString(16);
+    }
+  }
+  // карточка аудиокниги (общая с приложением: native.js)
+  function audioMeta(id, name, size, book, cover) {
+    return {
+      id, title: book.title, authors: book.authors, format: "audio", formatLabel: audioLabel(book), name, size,
+      addedAt: Date.now(), openedAt: Date.now(), pos: 0, segCount: 0, progress: 0, cover: cover || null,
+      audio: audioInfo(book), apos: 0,
+    };
+  }
+  const audioLabel = (book) => ((book.parts[0] && AudioMeta.ext(book.parts[0].name)) || "audio").toUpperCase();
+  const audioInfo = (book) => ({ duration: book.duration, parts: book.parts, chapters: book.chapters });
+  window.AudioCard = { audioLabel, audioInfo };
+
   const Library = {
+    thumbnail,
     async list() {
       return (await req("library", "readonly", (s) => s.getAll())) || [];
     },
@@ -104,6 +131,36 @@
         tx.onabort = () => rej(tx.error || new Error("Не хватает места в хранилище браузера"));
       });
       return meta;
+    },
+    // аудиокнига: файл хранится как Blob (сотни мегабайт в память не читаются); номер — по размеру и кускам файла
+    async addAudio(blob, name, book, cover) {
+      const id = await audioId(blob, name);
+      const existing = await this.get(id);
+      if (existing) {
+        await this.update(id, { openedAt: Date.now() });
+        return Object.assign(existing, { openedAt: Date.now() });
+      }
+      const meta = audioMeta(id, name, blob.size, book, cover);
+      const d = await db();
+      await new Promise((res, rej) => {
+        const tx = d.transaction(["library", "files"], "readwrite");
+        tx.objectStore("files").put({ name, type: blob.type || "", data: blob }, id);
+        tx.objectStore("library").put(meta);
+        tx.oncomplete = res;
+        tx.onerror = () => rej(tx.error);
+        tx.onabort = () => rej(tx.error || new Error("Не хватает места в хранилище браузера"));
+      });
+      return meta;
+    },
+    // файл книги как Blob (для аудиокниг — без чтения в память)
+    async blob(id) {
+      const rec = await this.getFile(id);
+      if (!rec) return null;
+      return rec.data instanceof Blob ? rec.data : new Blob([rec.data], { type: rec.type || "" });
+    },
+    async reader(id) {
+      const b = await this.blob(id);
+      return b ? AudioMeta.blobReader(b) : null;
     },
     async remove(id) {
       const d = await db();

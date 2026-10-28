@@ -38,7 +38,7 @@ window.addEventListener("error", (e) => {
     btnCatalog: $("btnCatalog"), catPanel: $("catPanel"), catSearch: $("catSearch"), catRefresh: $("catRefresh"),
     catList: $("catList"), catInfo: $("catInfo"),
     dlQueueBar: $("dlQueueBar"), btnSelect: $("btnSelect"), selBar: $("selBar"), selCount: $("selCount"), selAll: $("selAll"),
-    selShare: $("selShare"), selAudio: $("selAudio"), selDelete: $("selDelete"),
+    selShare: $("selShare"), selAudio: $("selAudio"), selDelete: $("selDelete"), libKind: $("libKind"),
   };
 
   // ---------- настройки ----------
@@ -393,6 +393,7 @@ window.addEventListener("error", (e) => {
   // ---------- воспроизведение ----------
   async function playFrom(i) {
     if (!segs.length || !modeAllows("tts")) return;   // автономный режим: чтения вслух нет
+    if (Audiobook.playing) Audiobook.pause();          // одновременно звучит что-то одно
     i = Math.max(0, Math.min(segs.length - 1, i));
     restartPhrase = false;
     if (Native) {
@@ -460,6 +461,7 @@ window.addEventListener("error", (e) => {
 
   async function resume() {
     if (!modeAllows("tts")) return;
+    if (Audiobook.playing) Audiobook.pause();
     // выбрана фраза (касание, ползунок, оглавление) — читаем с неё
     if (pick >= 0) return readFrom(pick);
     // место чтения не на экране (перелистнули, прокрутили — читали глазами) — читаем с того, что на экране;
@@ -1140,10 +1142,10 @@ window.addEventListener("error", (e) => {
   }
   { // удалили книгу (или всю библиотеку) — её готовая разметка больше не нужна
     const rm = Library.remove.bind(Library);
-    Library.remove = async (id) => { forgetBook(id); return rm(id); };
+    Library.remove = async (id) => { forgetBook(id); Audiobook.forget(id); return rm(id); };
     if (Library.clear) {
       const clr = Library.clear.bind(Library);
-      Library.clear = async (...a) => { [...bookCache.keys()].forEach(forgetBook); return clr(...a); };
+      Library.clear = async (...a) => { [...bookCache.keys()].forEach(forgetBook); if (Audiobook.current) Audiobook.forget(Audiobook.current); return clr(...a); };
     }
   }
 
@@ -1224,9 +1226,9 @@ window.addEventListener("error", (e) => {
     pre = pre.replace(/[\s\d._\-–—()[\]#№]+$/u, "").replace(/(глава|часть|chapter|part|гл)$/iu, "").replace(/[\s._\-–—]+$/u, "");
     return (pre.length >= 3 ? pre : `Сборник из ${names.length} файлов`) + ".zip";
   }
-  async function askAssemble(n) {
-    return ask("Несколько файлов", `<p>Выбрано файлов: <b>${n}</b>. Это главы одной книги или отдельные книги?</p>
-      <p class="set-hint">Одна книга: файлы встанут по порядку имён (2 раньше 10), каждый станет главой в оглавлении.</p>`,
+  async function askAssemble(n, audio) {
+    return ask("Несколько файлов", `<p>Выбрано файлов: <b>${n}</b>. Это ${audio ? "части одной аудиокниги" : "главы одной книги"} или отдельные книги?</p>
+      <p class="set-hint">Одна книга: файлы встанут по порядку имён (2 раньше 10), каждый станет главой${audio ? "" : " в оглавлении"}.</p>`,
       [{ label: "Отдельные книги", value: "sep" }, { label: "Собрать в одну книгу", primary: true, value: "one" }]);
   }
   // [{ name, data: Uint8Array }] → File (ZIP)
@@ -1244,6 +1246,13 @@ window.addEventListener("error", (e) => {
 
   async function addFiles(files, openIt = true) {
     files = Array.from(files);
+    // аудиокниги (MP3, M4B…, ZIP с ними) — своим путём: хранятся как есть, открываются в плеере
+    const parts = await Audiobook.split(files);
+    if (parts.audio.length) {
+      const shown = await Audiobook.importBrowser(parts.audio, openIt && !parts.rest.length);
+      files = parts.rest;
+      if (!files.length) return shown;
+    }
     if (files.length > 1 && (await askAssemble(files.length)) === "one") {
       toast(`Собираю книгу из ${files.length} файлов…`, 8000);
       const list = [];
@@ -1332,6 +1341,12 @@ window.addEventListener("error", (e) => {
     checkAbort(signal);
     if (!meta) throw new Error("книги нет в библиотеке — возможно, её удалили");
     job.title = meta.title;
+    if (meta.format === "audio") {                      // аудиокнига — экран плеера (текстовая книга остаётся под ним)
+      if (!isCurrentOpen(job, signal)) throw abortError();
+      closePanels();
+      await Audiobook.open(meta);
+      return true;
+    }
     const hit = bookCache.get(id);
     if (hit) {                                          // недавно открытая: файл не читаем и не разбираем
       if (meta.customMeta) { hit.b.title = meta.title; hit.b.authors = meta.authors || []; }
@@ -1467,7 +1482,9 @@ window.addEventListener("error", (e) => {
   function sortedBooks() {
     const q = el.libSearch.value.trim().toLowerCase();
     const by = el.libSort.value;
-    let list = libCache.filter((m) => !q || (m.title + " " + (m.authors || []).join(" ") + " " + m.name).toLowerCase().includes(q));
+    const kind = el.libKind.hidden ? "all" : el.libKind.value;
+    let list = libCache.filter((m) => (kind === "all" || (kind === "audio") === (m.format === "audio")) &&
+      (!q || (m.title + " " + (m.authors || []).join(" ") + " " + m.name).toLowerCase().includes(q)));
     const coll = new Intl.Collator("ru");
     if (by === "title") list.sort((a, b) => coll.compare(a.title, b.title));
     else if (by === "author") list.sort((a, b) => coll.compare((a.authors || [])[0] || "яя", (b.authors || [])[0] || "яя") || coll.compare(a.title, b.title));
@@ -1489,28 +1506,32 @@ window.addEventListener("error", (e) => {
   function bookCard(m) {
     const pct = Math.round((m.progress || 0) * 100);
     const authors = (m.authors || []).join(", ");
+    const isAudio = m.format === "audio";
+    const len = isAudio && m.audio && m.audio.duration ? AudioMeta.fmtDuration(m.audio.duration) + " · " : "";
     return `<div class="lib-item${m.id === bookId ? " current" : ""}${selected.has(m.id) ? " sel" : ""}" data-id="${m.id}">
       <span class="lib-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-      <button class="lib-open" data-act="open" title="Открыть">
+      <button class="lib-open" data-act="open" title="${isAudio ? "Слушать" : "Открыть"}">
         <span class="lib-cover">${coverHtml(m)}</span>
         <span class="lib-info">
           <span class="lib-title">${esc(m.title)}</span>
           <span class="lib-author">${esc(authors || "Автор не указан")}</span>
-          <span class="lib-meta"><span class="badge">${esc(m.formatLabel || m.format || "")}</span>${fmtSize(m.size || 0)}<span class="lib-pct">${pct ? " · " + pct + "%" : " · не начата"}</span></span>
+          <span class="lib-meta">${isAudio ? '<svg class="lib-ab" aria-label="Аудиокнига"><use href="#i-voice"/></svg>' : ""}<span class="badge">${esc(m.formatLabel || m.format || "")}</span>${len}${fmtSize(m.size || 0)}<span class="lib-pct">${pct ? " · " + pct + "%" : " · не начата"}</span></span>
           <span class="lib-progress"><i style="width:${pct}%"></i></span>
-          ${Native && modeAllows("tts") ? audioBadge(m.id) : ""}
+          ${Native && modeAllows("tts") && !isAudio ? audioBadge(m.id) : ""}
         </span>
       </button>
       <button class="icon-btn lib-more" data-act="menu" title="Действия" aria-label="Действия">⋯</button>
       <button class="icon-btn lib-fav${m.favorite ? " on" : ""}" data-act="fav" aria-pressed="${m.favorite ? "true" : "false"}"
         title="${m.favorite ? "Убрать из избранного" : "В избранное"}" aria-label="${m.favorite ? "Убрать из избранного" : "В избранное"}"><svg><use href="#i-star"/></svg></button>
-      <div class="lib-actions" hidden>${mainMenuHtml()}</div>
+      <div class="lib-actions" hidden>${mainMenuHtml(isAudio)}</div>
     </div>`;
   }
 
   // список книг: виртуальный (тысячи книг не тормозят); пока открыто меню книги — не перерисовываем
   const libVL = VList(el.libList, { frozen: () => !!el.libList.querySelector(".lib-actions:not([hidden])") });
   function renderLibrary() {
+    const hasAudio = libCache.some((m) => m.format === "audio");
+    if (el.libKind.hidden === hasAudio) el.libKind.hidden = !hasAudio;
     const list = sortedBooks();
     el.libCount.textContent = libCache.length ? `${libCache.length}` : "";
     if (list.length) libVL.set(list.map((m, i) => ({ key: m.id, est: 92, html: bookCard(m).replace('<div class="lib-item', `<div data-vi="${i}" class="lib-item`) })));
@@ -1608,9 +1629,10 @@ window.addEventListener("error", (e) => {
         return;
       case "reset-yes":
         resetActions(actions); actions.hidden = true;
-        await Library.update(id, { pos: 0, progress: 0 });
-        Object.assign(meta, { pos: 0, progress: 0 });
+        await Library.update(id, meta.format === "audio" ? { apos: 0, progress: 0 } : { pos: 0, progress: 0 });
+        Object.assign(meta, { pos: 0, progress: 0, apos: 0 });
         if (id === bookId) jump(0, false);
+        Audiobook.reset(id);
         renderLibrary();
         return toast("Прогресс сброшен");
       case "delete":
@@ -1633,6 +1655,7 @@ window.addEventListener("error", (e) => {
         const authors = actions.querySelector(".in-author").value.split(",").map((s) => s.trim()).filter(Boolean);
         await Library.update(id, { title, authors, customMeta: true });
         Object.assign(meta, { title, authors });
+        Audiobook.rename(id, title, authors);
         if (id === bookId && book) {
           book.title = title; book.authors = authors;
           el.title.textContent = title;
@@ -1645,11 +1668,15 @@ window.addEventListener("error", (e) => {
     }
   });
   // меню книги: основное и «Ещё…» (редкие действия — экспорт файла и сброс прогресса)
-  function mainMenuHtml() {
-    return (Native && modeAllows("tts") ? '<button data-act="audio">Озвучка без интернета…</button>' : "") +
+  function mainMenuHtml(isAudio) {
+    return (Native && modeAllows("tts") && !isAudio ? '<button data-act="audio">Озвучка без интернета…</button>' : "") +
       '<button data-act="rename">Переименовать</button><button data-act="more">Ещё…</button>';
   }
-  function resetActions(actions) { actions.innerHTML = mainMenuHtml(); }
+  function resetActions(actions) {
+    const item = actions.closest(".lib-item");
+    const m = item && libCache.find((x) => x.id === item.dataset.id);
+    actions.innerHTML = mainMenuHtml(!!m && m.format === "audio");
+  }
 
 
   // ---------- выбор нескольких книг и групповые действия ----------
@@ -1744,11 +1771,25 @@ window.addEventListener("error", (e) => {
   el.libSort.value = store.get("libSort", "recent");
   if (!el.libSort.value) el.libSort.value = "recent";   // сохранённый пункт, которого больше нет
   el.libSort.onchange = () => { store.set("libSort", el.libSort.value); renderLibrary(); };
+  el.libKind.value = store.get("libKind", "all");
+  if (!el.libKind.value) el.libKind.value = "all";
+  el.libKind.onchange = () => { store.set("libKind", el.libKind.value); renderLibrary(); el.libList.scrollTop = 0; if (selecting) updateSelBar(); };
   // в приложении книги выбираются системным диалогом (на Android поле выбора файла в WebView ненадёжно)
   async function nativePick() {
     let picked;
     try { picked = await Library.pickFiles(); } catch (e) { return toast("Не удалось выбрать файлы: " + e.message); }
     if (!picked.length) return;
+    // аудиокниги: приложение уже положило файлы; разбираем куски файла, не читая его целиком
+    const audioPicked = [];
+    for (const p of picked) {
+      if (AudioMeta.isAudioName(p.name)) { audioPicked.push(p); continue; }
+      if (AudioMeta.ext(p.name) === "zip") { try { if (await AudioMeta.zipIsAudio(await Library.reader(p.id))) audioPicked.push(p); } catch (_) {} }
+    }
+    if (audioPicked.length) {
+      picked = picked.filter((p) => !audioPicked.includes(p));
+      const id = await Audiobook.importNative(audioPicked);
+      if (!picked.length) { if (id) openFromLibrary(id); return; }
+    }
     if (picked.length > 1 && (await askAssemble(picked.length)) === "one") {
       // приложение уже положило файлы в библиотеку по одному — собираем из них одну книгу, отдельные убираем
       try {
@@ -2690,6 +2731,7 @@ window.addEventListener("error", (e) => {
       closePanels(); return true;
     }
     if (el.toc.classList.contains("open")) { closePanels(); return true; }
+    if (Audiobook.isOpen()) { Audiobook.close(); return true; }   // плеер аудиокниги — свернуть (к книге)
     return false;
   }
 
@@ -3396,6 +3438,7 @@ window.addEventListener("error", (e) => {
     if (e.target.matches("input") && e.code !== "Space") return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.shiftKey && !/^Arrow/.test(e.code)) return;
+    if (!el.lib.classList.contains("open") && askEl.box.hidden && Audiobook.key(e)) return;   // экран плеера аудиокниги
     if (e.code === "Space") { e.preventDefault(); togglePlay(); }
     else if (isPaged() && !e.shiftKey && (e.code === "ArrowRight" || e.code === "PageDown")) { e.preventDefault(); turn(1); }
     else if (isPaged() && !e.shiftKey && (e.code === "ArrowLeft" || e.code === "PageUp")) { e.preventDefault(); turn(-1); }
@@ -3411,9 +3454,12 @@ window.addEventListener("error", (e) => {
   if ("mediaSession" in navigator) {
     const ms = navigator.mediaSession;
     const h = (a, f) => { try { ms.setActionHandler(a, f); } catch (_) {} };
-    h("play", resume); h("pause", pause); h("stop", stop);
-    h("previoustrack", () => jump(cur - 1, playing));
-    h("nexttrack", () => jump(cur + 1, playing));
+    // аудиокнига (её экран открыт или она играет) — кнопки ей, иначе чтению вслух
+    const m = (name, f) => (...a) => (Audiobook.mediaAction(name) ? undefined : f(...a));
+    h("play", m("play", resume)); h("pause", m("pause", pause)); h("stop", m("stop", stop));
+    h("previoustrack", m("previoustrack", () => jump(cur - 1, playing)));
+    h("nexttrack", m("nexttrack", () => jump(cur + 1, playing)));
+    h("seekbackward", m("seekbackward", () => {})); h("seekforward", m("seekforward", () => {}));
   }
 
   window.addEventListener("beforeunload", flushPos);
@@ -3437,6 +3483,7 @@ window.addEventListener("error", (e) => {
       onEnded() { playing = false; setLoading(false); updateUI(); toast("Книга дочитана"); },
       onSleep() { sleepFired(true); },
       onServerChanged() { loadServerInfo(); },
+      onAb(st) { Audiobook.onNativeState(st); },
       toast(msg) { toast(msg, 2000); },
       onBack() { return goBack() ? "handled" : "exit"; },
       onPreload(st) {
@@ -3469,6 +3516,19 @@ window.addEventListener("error", (e) => {
     });
   }
 
+  Audiobook.init({
+    store, toast, ask, esc, fmtSize, Library, askAssemble, closePanels, refreshLibrary,
+    hideToast: () => el.toast.classList.remove("show"),
+    thumbnail: (src) => (Library.thumbnail ? Library.thumbnail(src) : null),
+    openLibrary: () => { showSettings(false); openPanel(el.lib); },
+    pauseTts: () => { if (playing) pause(); },
+    onProgress: (id, progress) => {
+      const m = libCache.find((x) => x.id === id);
+      if (m) m.progress = progress;
+      updateLibProgress(id, progress);
+    },
+  });
+
   async function start() {
     applyView();
     updateUI();
@@ -3486,6 +3546,9 @@ window.addEventListener("error", (e) => {
     if (Native) { try { onQueue(await Native.Audio.queue()); } catch (_) {} }
     const last = store.get("lastBook", null);
     if (last && libCache.some((m) => m.id === last)) await openFromLibrary(last);
+    // последняя аудиокнига — в мини-плеер библиотеки (без воспроизведения)
+    const lastAudio = libCache.find((m) => m.id === store.get("lastAudio", null) && m.format === "audio");
+    if (lastAudio) await Audiobook.restore(lastAudio);
     // первый запуск за день — проверить выпуски на GitHub (в фоне); в автономном режиме — только вручную
     if (!autonomous()) checkUpdates(false).catch(() => {});
   }
