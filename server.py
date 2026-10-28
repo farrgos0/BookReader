@@ -250,10 +250,12 @@ def load_silero():
 class SileroEngine:
     def __init__(self, device="cpu"):
         import torch
+        startup("модель: библиотека torch загружена")
 
         print("Загружаю модель Silero (v5_ru)...")
         self.torch = torch
         model = load_silero()
+        startup("модель: файл модели прочитан")
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
             if device == "cpu" and shutil.which("nvidia-smi"):
@@ -264,6 +266,7 @@ class SileroEngine:
             print("CUDA недоступна, остаюсь на CPU")
             device = "cpu"
         model.to(torch.device(device))
+        startup(f"модель: перенесена на {device}")
         self.model = model
         self.device = device
         self.lock = threading.Lock()
@@ -284,6 +287,7 @@ class SileroEngine:
         self.accentor = ru_yo.find_accentor(model) if all(
             k in params for k in ("put_accent", "put_yo", "put_stress_homo", "put_yo_homo")) else None
         self.no_auto = {"put_accent": False, "put_yo": False, "put_stress_homo": False, "put_yo_homo": False}
+        startup("модель: ударения и «ё» подключены")
         if self.accentor is None:
             print("Ударения и «ё»: расставляет сама Silero (в этой версии модели нет accentor)")
         if device == "cuda":
@@ -296,6 +300,7 @@ class SileroEngine:
                 self.synth("Проверка.", self.speakers[0])
             except Exception:  # noqa: BLE001
                 pass
+            startup("модель: прогрев видеокарты закончен")
         print(f"Готово. Устройство: {device}. Голоса: {', '.join(self.speakers)}")
 
     def accented(self, text):
