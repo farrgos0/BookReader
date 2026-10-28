@@ -41,6 +41,7 @@
     <symbol id="i-back15" viewBox="0 0 24 24"><path d="M4.6 9.5A8 8 0 1 1 4 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M3.6 4.8v5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><text x="12.6" y="15.6" text-anchor="middle" font-size="8" font-weight="700" font-family="system-ui,sans-serif" fill="currentColor">15</text></symbol>
     <symbol id="i-fwd30" viewBox="0 0 24 24"><path d="M19.4 9.5A8 8 0 1 0 20 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M20.4 4.8v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><text x="11.4" y="15.6" text-anchor="middle" font-size="8" font-weight="700" font-family="system-ui,sans-serif" fill="currentColor">30</text></symbol>
     <symbol id="i-chapters" viewBox="0 0 24 24"><path d="M9 6.5h11M9 12h11M9 17.5h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3.5 4.5l3 2-3 2z"/><circle cx="4.8" cy="12" r="1.3"/><circle cx="4.8" cy="17.5" r="1.3"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
     <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   </svg>
 
@@ -69,6 +70,7 @@
       <button class="icon-btn" id="libClose" title="Закрыть">✕</button>
     </div>
     <div class="lib-view" id="libView">
+    <button class="lib-home" id="btnHome" hidden><svg><use href="#i-home"/></svg><span>Главная</span></button>
     <div class="lib-tools">
       <label class="btn-add" title="Добавить книги">
         <svg><use href="#i-plus"/></svg><span>Добавить</span>
@@ -169,14 +171,27 @@
       <div class="drop" id="drop">
         <input type="file" id="fileInput" accept=".fb2,.zip,.epub,.txt,.md,.html,.htm,.xhtml,.docx,.odt,.rtf,.mobi,.azw,.azw3,.prc,.pdf,.mp3,.m4b,.m4a,.mp4,.ogg,.oga,.opus,.flac,.wav" multiple hidden>
         <div class="drop-mark"><svg><use href="#i-books"/></svg></div>
-        <h1>Откройте книгу</h1>
-        <p>Перетащите сюда файлы или нажмите, чтобы выбрать.</p>
+        <h1>Добавить в библиотеку</h1>
+        <p>Отпустите файлы — книги и аудиокниги добавятся в библиотеку.</p>
         <p class="formats">FB2 · EPUB · MOBI/AZW3 · PDF · DOCX · ODT · RTF · TXT · HTML · MD<br>Аудиокниги: MP3 · M4B · OGG · OPUS · FLAC · WAV</p>
         <p class="hint">Книги сохраняются в библиотеке браузера. Озвучка — локально, голосами Silero.</p>
+      </div>
+      <!-- стартовый экран: последняя книга, избранные, недавние -->
+      <div class="home-last" id="homeLast" hidden></div>
+      <div class="recent" id="homeFav" hidden>
+        <h2>Избранные</h2>
+        <div class="recent-list" id="favList"></div>
       </div>
       <div class="recent" id="recent" hidden>
         <h2>Недавние</h2>
         <div class="recent-list" id="recentList"></div>
+      </div>
+      <div class="home-empty" id="homeEmpty" hidden>
+        <div class="drop-mark"><svg><use href="#i-books"/></svg></div>
+        <h1>Библиотека пуста</h1>
+        <p>Добавьте книги или аудиокниги: <b>Библиотека → «Добавить»</b><span class="web-only"> или перетащите файлы в окно</span>.</p>
+        <p class="formats">FB2 · EPUB · MOBI/AZW3 · PDF · DOCX · ODT · RTF · TXT · HTML · MD<br>Аудиокниги: MP3 · M4B · OGG · OPUS · FLAC · WAV</p>
+        <button class="set-btn primary" id="homeOpenLib"><svg><use href="#i-books"/></svg><span>Открыть библиотеку</span></button>
       </div>
     </section>
     <!-- аудиокнига (шаг 8): обложка вместо текста; управление — плеер внизу, главы — в оглавлении -->

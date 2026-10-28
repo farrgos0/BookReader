@@ -1542,12 +1542,48 @@ window.addEventListener("error", (e) => {
       libVL.set([]);
       el.libList.innerHTML = `<div class="lib-empty">${libCache.length ? "Ничего не найдено" : "Библиотека пуста.<br>Добавьте книги кнопкой «Добавить» или перетащите файлы в окно."}</div>`;
     }
-    // недавние на стартовом экране
-    const recent = [...libCache].sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0)).slice(0, 8);
-    el.recent.hidden = !recent.length;
-    el.recentList.innerHTML = recent.map((m) => `<button class="recent-item" data-id="${m.id}" title="${esc(m.title)}">
+    renderHome();
+  }
+
+  // ---------- стартовый экран: последняя книга, избранные, недавние ----------
+  const tile = (m) => `<button class="recent-item" data-id="${m.id}" title="${esc(m.title)}">
       <span class="lib-cover">${coverHtml(m)}</span><span class="r-title">${esc(m.title)}</span>
-      <span class="r-meta">${esc(m.formatLabel || "")} · ${Math.round((m.progress || 0) * 100)}%</span></button>`).join("");
+      <span class="r-meta">${m.format === "audio" ? "🎧 " : ""}${esc(m.formatLabel || "")} · ${Math.round((m.progress || 0) * 100)}%</span></button>`;
+  function renderHome() {
+    const byOpened = [...libCache].sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0));
+    const last = byOpened[0];
+    const homeLast = $("homeLast"), homeFav = $("homeFav"), homeEmpty = $("homeEmpty");
+    homeEmpty.hidden = !!libCache.length;
+    homeLast.hidden = !last;
+    if (last) {
+      const pct = Math.round((last.progress || 0) * 100);
+      const audio = last.format === "audio";
+      const left = audio && last.audio && last.audio.duration ? ` · осталось ${AudioMeta.fmtDuration(Math.max(0, last.audio.duration - (last.apos || 0)))}` : "";
+      homeLast.innerHTML = `<button class="home-card" data-id="${last.id}">
+        <span class="lib-cover">${coverHtml(last)}</span>
+        <span class="home-info">
+          <span class="home-label">${pct ? (audio ? "Продолжить слушать" : "Продолжить чтение") : (audio ? "Начать слушать" : "Начать чтение")}</span>
+          <span class="home-title">${esc(last.title)}</span>
+          <span class="home-author">${esc((last.authors || []).join(", ") || "Автор не указан")}</span>
+          <span class="home-meta">${audio ? "🎧 " : ""}${esc(last.formatLabel || "")} · ${pct}%${left}</span>
+          <span class="lib-progress"><i style="width:${pct}%"></i></span>
+        </span></button>`;
+    }
+    const favs = byOpened.filter((m) => m.favorite);
+    homeFav.hidden = !favs.length;
+    $("favList").innerHTML = favs.map(tile).join("");
+    const recent = byOpened.slice(1, 11);   // последняя — в карточке сверху
+    el.recent.hidden = !recent.length;
+    el.recentList.innerHTML = recent.map(tile).join("");
+    $("btnHome").hidden = !book && !Audiobook.active;
+  }
+
+  // на стартовый экран: книга закрывается (место сохранено), чтение и аудиокнига — на паузу
+  function goHome() {
+    flushPos();
+    closePanels();
+    closeBook();
+    window.scrollTo(0, 0);
   }
 
   function updateLibProgress(id, progress) {
@@ -1844,10 +1880,12 @@ window.addEventListener("error", (e) => {
   }
 
   el.libFiles.onchange = () => { if (el.libFiles.files.length) addFiles(el.libFiles.files); el.libFiles.value = ""; };
-  el.recentList.addEventListener("click", (e) => {
-    const b = e.target.closest(".recent-item");
+  el.empty.addEventListener("click", (e) => {
+    const b = e.target.closest(".recent-item, .home-card");
     if (b) openFromLibrary(b.dataset.id);
   });
+  $("btnHome").onclick = () => goHome();
+  $("homeOpenLib").onclick = () => { showSettings(false); openPanel(el.lib); };
 
 
   // ---------- озвучка без интернета (только приложение) ----------
@@ -2752,6 +2790,7 @@ window.addEventListener("error", (e) => {
       closePanels(); return true;
     }
     if (el.toc.classList.contains("open")) { closePanels(); return true; }
+    if (book || Audiobook.active) { goHome(); return true; }   // книга → стартовый экран (место сохранено)
     return false;
   }
 
@@ -3442,7 +3481,7 @@ window.addEventListener("error", (e) => {
     if (s) readByDoubleTap(Number(s.dataset.i));
   });
 
-  el.drop.onclick = () => (Native ? nativePick() : el.file.click());
+  el.drop.onclick = () => (Native ? nativePick() : el.file.click());   // блок виден только при перетаскивании (ПК)
   el.file.onchange = () => { if (el.file.files.length) addFiles(el.file.files); el.file.value = ""; };
 
   let dragDepth = 0;
@@ -3578,8 +3617,6 @@ window.addEventListener("error", (e) => {
     await refreshLibrary();
     await refreshAudio();
     if (Native) { try { onQueue(await Native.Audio.queue()); } catch (_) {} }
-    const last = store.get("lastBook", null);
-    if (last && libCache.some((m) => m.id === last)) await openFromLibrary(last);
     // первый запуск за день — проверить выпуски на GitHub (в фоне); в автономном режиме — только вручную
     if (!autonomous()) checkUpdates(false).catch(() => {});
   }

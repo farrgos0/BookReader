@@ -135,7 +135,11 @@ svg { width: 22px; height: 22px; fill: currentColor; }
 
 /* ---------- пустое состояние ---------- */
 main { padding: 0 16px calc(var(--player-h) + 40px); }
-.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 36px; min-height: calc(100vh - 200px); padding-top: 32px; }
+.empty { display: flex; flex-direction: column; align-items: center; gap: 30px; min-height: calc(100vh - 200px); padding: 24px 0 32px; }
+/* блок «Добавить» — только на ПК, пока перетаскивают файлы; стоит выше всех книг */
+.drop { display: none; }
+html:not(.native) body.dragging .drop { display: block; }
+html:not(.native) body.dragging .home-empty { display: none; }
 .drop {
   width: min(520px, 100%); padding: 44px 32px; text-align: center; cursor: pointer;
   border: 2px dashed var(--line); border-radius: 18px; background: var(--surface);
@@ -870,3 +874,35 @@ html.ab-mode #player.tts-only { display: block !important; }
 .lib-ab { width: 14px; height: 14px; flex: none; color: var(--accent); }
 .lib-tools #libKind { grid-column: 1 / -1; grid-row: 3; }
 .lib-tools #libKind[hidden] { display: none; }
+
+/* ---------- стартовый экран ---------- */
+.home-last { width: min(860px, 100%); }
+.home-card { display: flex; gap: 18px; width: 100%; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface);
+  color: var(--ink); text-align: left; cursor: pointer; font: inherit; box-shadow: 0 6px 20px rgba(0,0,0,.06); transition: transform .2s, box-shadow .2s; }
+.home-card:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0,0,0,.12); }
+.home-card .lib-cover { width: 92px; height: 132px; border-radius: 6px; }
+.home-card .lib-cover img { width: 100%; height: 100%; object-fit: cover; }
+.home-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+.home-label { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+.home-title { font-family: var(--font-read); font-size: 20px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.home-author, .home-meta { font-size: 13px; color: var(--muted); }
+.home-info .lib-progress { margin-top: 6px; max-width: 320px; }
+.home-empty { text-align: center; max-width: 520px; display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 8vh; }
+.home-empty[hidden], .home-last[hidden] { display: none; }
+.home-empty h1 { margin: 6px 0; font-family: var(--font-read); font-weight: 600; font-size: 24px; }
+.home-empty p { margin: 4px 0; color: var(--muted); line-height: 1.5; }
+.home-empty .formats { font-size: 12px; opacity: .8; }
+.home-empty .set-btn { margin-top: 12px; padding: 0 18px; }
+/* «Главная» вверху библиотеки — когда открыта книга */
+.lib-home { display: flex; align-items: center; gap: 10px; margin: 10px 14px 0; height: 40px; padding: 0 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; }
+.lib-home[hidden] { display: none; }
+.lib-home:hover { background: var(--hl-soft); }
+.lib-home svg { width: 20px; height: 20px; }
+@media (max-width: 760px) {
+  .empty { gap: 22px; padding: 14px 14px 24px; }
+  .home-card { padding: 12px; gap: 14px; }
+  .home-card .lib-cover { width: 72px; height: 104px; }
+  .home-title { font-size: 17px; }
+  .recent-list { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 14px; }
+}
