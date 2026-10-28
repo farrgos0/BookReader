@@ -492,7 +492,7 @@ window.addEventListener("error", (e) => {
     } else playFrom(cur);
   }
 
-  function togglePlay() { if (!segs.length || !modeAllows("tts")) return; playing ? pause() : resume(); }
+  function togglePlay() { if (Audiobook.active) return Audiobook.toggle(); if (!segs.length || !modeAllows("tts")) return; playing ? pause() : resume(); }
 
   function stop() {
     pause();
@@ -603,7 +603,7 @@ window.addEventListener("error", (e) => {
     }
     sleepSync();
   }
-  sleepBtn.onclick = () => { act("таймер сна"); sleepDialog(); };
+  sleepBtn.onclick = () => { act("таймер сна"); if (Audiobook.active) Audiobook.sleepDialog(); else sleepDialog(); };
 
   // ---------- место чтения: выбор фразы, «К месту чтения», «↩ Вернуться» ----------
   // Место чтения (cur: подсветка, прогресс, откуда продолжит ▶) меняется только когда реально начинают слушать
@@ -1028,6 +1028,7 @@ window.addEventListener("error", (e) => {
   function setLoading(on) { document.body.classList.toggle("loading", on); }
 
   function updateUI() {
+    if (Audiobook.active) return Audiobook.renderBar();   // открыта аудиокнига — плеер внизу её
     const has = segs.length > 0;
     document.body.classList.toggle("playing", playing);
     [el.play, el.prev, el.next, el.seek].forEach((b) => (b.disabled = !has));
@@ -1151,6 +1152,7 @@ window.addEventListener("error", (e) => {
 
   // Вставить готовую книгу (built — из buildBook или из кэша) в страницу. Только быстрые шаги, без разбора.
   function showBook(b, meta, built) {
+    Audiobook.unload();      // была открыта аудиокнига — пауза, место сохранено
     stop();
     stashBook();
     book = b;
@@ -1197,6 +1199,7 @@ window.addEventListener("error", (e) => {
   }
 
   function closeBook() {
+    Audiobook.unload();
     stop();
     releaseBook();
     book = null; bookId = null; segs = []; sections = []; groups = []; curSec = 0; pick = -1;
@@ -1508,7 +1511,7 @@ window.addEventListener("error", (e) => {
     const authors = (m.authors || []).join(", ");
     const isAudio = m.format === "audio";
     const len = isAudio && m.audio && m.audio.duration ? AudioMeta.fmtDuration(m.audio.duration) + " · " : "";
-    return `<div class="lib-item${m.id === bookId ? " current" : ""}${selected.has(m.id) ? " sel" : ""}" data-id="${m.id}">
+    return `<div class="lib-item${m.id === bookId || m.id === Audiobook.current ? " current" : ""}${selected.has(m.id) ? " sel" : ""}" data-id="${m.id}">
       <span class="lib-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       <button class="lib-open" data-act="open" title="${isAudio ? "Слушать" : "Открыть"}">
         <span class="lib-cover">${coverHtml(m)}</span>
@@ -2731,7 +2734,6 @@ window.addEventListener("error", (e) => {
       closePanels(); return true;
     }
     if (el.toc.classList.contains("open")) { closePanels(); return true; }
-    if (Audiobook.isOpen()) { Audiobook.close(); return true; }   // плеер аудиокниги — свернуть (к книге)
     return false;
   }
 
@@ -3301,8 +3303,8 @@ window.addEventListener("error", (e) => {
 
   // ---------- события ----------
   onTap(el.play, togglePlay, "плей/пауза");
-  onTap(el.prev, () => jump(cur - 1, playing), "предыдущая фраза");
-  onTap(el.next, () => jump(cur + 1, playing), "следующая фраза");
+  onTap(el.prev, () => (Audiobook.active ? Audiobook.skip(-15) : jump(cur - 1, playing)), "назад");
+  onTap(el.next, () => (Audiobook.active ? Audiobook.skip(30) : jump(cur + 1, playing)), "вперёд");
   onTap(el.btnToc, () => togglePanel(el.toc), "кнопка оглавления");
   el.tocClose.onclick = () => closePanels();
   onTap(el.btnLib, () => { if (!el.lib.classList.contains("open")) showSettings(false); togglePanel(el.lib); }, "кнопка библиотеки");
@@ -3312,6 +3314,7 @@ window.addEventListener("error", (e) => {
   // ползунок: пока тянут — подсказка с главой; отпустили (или просто нажали) — переход (см. navigateTo),
   // а если промахнулись — «↩ Вернуться».
   el.seek.oninput = () => {
+    if (Audiobook.active) return Audiobook.seekInput();
     const i = Number(el.seek.value);
     seekTip.textContent = `${chapterOf(i)} · ${pctOf(i)}%`;
     seekTip.hidden = false;
@@ -3319,6 +3322,7 @@ window.addEventListener("error", (e) => {
     seekTip.style.left = Math.max(half + 4, Math.min(W - half - 4, x)) + "px";
   };
   el.seek.onchange = () => {
+    if (Audiobook.active) return Audiobook.seekChange();
     seekTip.hidden = true;
     act("ползунок");
     navigateTo(Number(el.seek.value));
@@ -3334,9 +3338,10 @@ window.addEventListener("error", (e) => {
   };
   el.rate.value = String(settings.rate);
   if (!el.rate.value) el.rate.value = "1";
-  el.rate.onchange = () => { settings.rate = Number(el.rate.value); store.set("rate", settings.rate); audio.playbackRate = settings.rate; if (Native) Native.Player.setRate(settings.rate); };
+  el.rate.onchange = () => { if (Audiobook.active) return Audiobook.setRate(Number(el.rate.value)); settings.rate = Number(el.rate.value); store.set("rate", settings.rate); audio.playbackRate = settings.rate; if (Native) Native.Player.setRate(settings.rate); };
   el.volume.value = settings.volume;
-  el.volume.oninput = () => { audio.volume = Number(el.volume.value); settings.volume = audio.volume; store.set("volume", audio.volume); };
+  el.volume.oninput = () => { audio.volume = Number(el.volume.value); settings.volume = audio.volume; store.set("volume", audio.volume); Audiobook.setVolume(audio.volume); };
+  Audiobook.setVolume(settings.volume);
 
   // ---------- настройки (левая панель → «Настройки») ----------
   function setFontSize(px) {
@@ -3438,7 +3443,7 @@ window.addEventListener("error", (e) => {
     if (e.target.matches("input") && e.code !== "Space") return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.shiftKey && !/^Arrow/.test(e.code)) return;
-    if (!el.lib.classList.contains("open") && askEl.box.hidden && Audiobook.key(e)) return;   // экран плеера аудиокниги
+    if (askEl.box.hidden && Audiobook.key(e)) return;   // открыта аудиокнига: пробел, ← → — её
     if (e.code === "Space") { e.preventDefault(); togglePlay(); }
     else if (isPaged() && !e.shiftKey && (e.code === "ArrowRight" || e.code === "PageDown")) { e.preventDefault(); turn(1); }
     else if (isPaged() && !e.shiftKey && (e.code === "ArrowLeft" || e.code === "PageUp")) { e.preventDefault(); turn(-1); }
@@ -3520,8 +3525,19 @@ window.addEventListener("error", (e) => {
     store, toast, ask, esc, fmtSize, Library, askAssemble, closePanels, refreshLibrary,
     hideToast: () => el.toast.classList.remove("show"),
     thumbnail: (src) => (Library.thumbnail ? Library.thumbnail(src) : null),
-    openLibrary: () => { showSettings(false); openPanel(el.lib); },
     pauseTts: () => { if (playing) pause(); },
+    syncPlayerHeight, closeBook,
+    openToc: () => openPanel(el.toc),
+    el: { prev: el.prev, next: el.next, play: el.play, seek: el.seek, seekTip, statusMain: el.statusMain, statusSub: el.statusSub,
+      rate: el.rate, sleepBtn, sleepLeft, tocList: el.tocList, btnToc: el.btnToc, title: el.title, author: el.author },
+    // открыть аудиокнигу: текстовая книга закрывается (место сохранено), как при обычном переключении книг
+    enter(meta, temp) {
+      closeBook();
+      el.empty.hidden = true;
+      if (!temp) store.set("lastBook", meta.id);
+    },
+    onOpened: () => renderLibrary(),
+    onLeft: () => { el.rate.value = String(settings.rate); document.title = "BookReader"; },
     onProgress: (id, progress) => {
       const m = libCache.find((x) => x.id === id);
       if (m) m.progress = progress;
@@ -3546,9 +3562,6 @@ window.addEventListener("error", (e) => {
     if (Native) { try { onQueue(await Native.Audio.queue()); } catch (_) {} }
     const last = store.get("lastBook", null);
     if (last && libCache.some((m) => m.id === last)) await openFromLibrary(last);
-    // последняя аудиокнига — в мини-плеер библиотеки (без воспроизведения)
-    const lastAudio = libCache.find((m) => m.id === store.get("lastAudio", null) && m.format === "audio");
-    if (lastAudio) await Audiobook.restore(lastAudio);
     // первый запуск за день — проверить выпуски на GitHub (в фоне); в автономном режиме — только вручную
     if (!autonomous()) checkUpdates(false).catch(() => {});
   }

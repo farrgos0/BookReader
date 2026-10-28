@@ -1,4 +1,5 @@
-/* Плеер готовых аудиокниг (шаг 8): экран плеера, мини-плеер в библиотеке, добавление аудиокниг.
+/* Плеер готовых аудиокниг (шаг 8). Аудиокнига открывается как обычная книга: та же шапка, оглавление (главы)
+   и плеер внизу (⏮ ⏭ — назад 15 с / вперёд 30 с, ползунок — по текущей главе); в середине — обложка. Здесь же добавление.
    Звук: в браузере — элемент <audio> (части книги — куски сохранённого файла, Blob.slice); в приложении — системный
    плеер Android (Native.Ab: работает в фоне, уведомление, гарнитура). Работает в любом режиме, и в автономном.
    Позиция — секунды от начала книги (apos в карточке), progress — доля прослушанного.
@@ -106,6 +107,7 @@
       pause() { wantPlay = false; audio.pause(); playing = false; loading = false; render(); },
       seek(t) { place(t); },
       setRate(r) { audio.playbackRate = r; },
+      setVolume(v) { audio.volume = Math.max(0, Math.min(1, v)); },
       sleep() {},             // браузер: таймер ведёт контроллер (tick)
       stop() { wantPlay = false; audio.pause(); audio.removeAttribute("src"); if (url) URL.revokeObjectURL(url); url = null; part = -1; },
       get native() { return false; },
@@ -140,6 +142,7 @@
           parts: book.parts.map((p) => ({ off: p.off, size: p.size, duration: p.duration, mime: p.mime })),
           chapters: book.chapters.map((c) => ({ title: c.title, at: c.at })), at });
         startPoll();
+        try { applyState(await N().state()); } catch (_) {}   // играла в фоне, пока страницу перезагружали
       },
       play(t) { loading = true; render(); N().play(t, rate()).catch((e) => ctx.toast("Аудиокнига: " + e.message, 5000)); },
       pause() { N().pause().catch(() => {}); playing = false; render(); },
@@ -182,10 +185,11 @@
     if (!force && Math.abs(at - lastSaved) < 1) return;
     savedAt = Date.now();
     lastSaved = at;
-    const progress = cur.duration ? Math.min(1, at / cur.duration) : 0;
-    cur.meta.apos = at; cur.meta.progress = progress;
-    try { await ctx.Library.update(cur.id, { apos: at, progress, openedAt: Date.now() }); } catch (_) {}
-    ctx.onProgress(cur.id, progress);
+    const book = cur, pos = at;      // после await книга может быть уже закрыта
+    const progress = book.duration ? Math.min(1, pos / book.duration) : 0;
+    book.meta.apos = pos; book.meta.progress = progress;
+    try { await ctx.Library.update(book.id, { apos: pos, progress, openedAt: Date.now() }); } catch (_) {}
+    ctx.onProgress(book.id, progress);
   }
 
   // ---------- управление ----------
@@ -219,12 +223,6 @@
     seekTo(cur.chapters[i].at);
     if (sleep && sleep.chapterEnd !== undefined) sleep.chapterEnd = i;
   }
-  function prevChapter() {
-    const c = chapterOf(at);
-    // в начале главы (первые 3 с) — на предыдущую, иначе — к началу этой
-    goChapter(at - cur.chapters[c].at > 3 ? c : c - 1);
-  }
-  const nextChapter = () => goChapter(chapterOf(at) + 1);
   function setRate(r) {
     ctx.store.set("abRate", r);
     engine().setRate(r);
@@ -258,210 +256,184 @@
   }
 
   // ---------- открыть / закрыть ----------
+  // Аудиокнига открывается как обычная книга: текстовая закрывается, шапка, оглавление и плеер внизу — те же.
   // meta — карточка из библиотеки; temp — { blob } для прослушивания без добавления (браузер)
   async function open(meta, temp) {
     if (!meta.audio || !(meta.audio.parts || []).length) throw new Error("в карточке нет сведений об аудиокниге — удалите её и добавьте заново");
-    const same = cur && cur.id === meta.id;
-    if (!same) {
-      if (cur) { save(true); engine().stop(); }
-      sleep = null;
-      const blob = temp ? temp.blob : window.Native ? null : await ctx.Library.blob(meta.id);
-      if (!window.Native && !blob) throw new Error("файл аудиокниги не найден в хранилище");
-      cur = load(meta, { temp: !!temp, blob });
-      at = Math.min(meta.apos || 0, cur.duration);
-      playing = false; loading = false;
-      await engine().open(cur);
-      if (!temp) ctx.store.set("lastAudio", meta.id);
-    }
-    show(true);
-    render();
-    renderChapters();
+    if (cur && cur.id === meta.id) { ctx.closePanels(); return; }
+    const blob = temp ? temp.blob : window.Native ? null : await ctx.Library.blob(meta.id);
+    if (!window.Native && !blob) throw new Error("файл аудиокниги не найден в хранилище");
+    ctx.enter(meta, !!temp);          // закрыть текстовую (и прежнюю аудиокнигу), включить вид аудиокниги
+    sleep = null; nativeSleepLeft = 0;
+    cur = load(meta, { temp: !!temp, blob });
+    at = Math.min(meta.apos || 0, cur.duration);
+    playing = false; loading = false; lastSaved = at;
+    document.documentElement.classList.add("ab-mode");
+    setBarIcons(true);
+    renderStage();
+    renderToc();
+    renderBar();
+    ctx.syncPlayerHeight();
+    await engine().open(cur);
     if (!temp) ctx.Library.update(meta.id, { openedAt: Date.now() }).catch(() => {});
-    if (!same && at > 5) ctx.toast(`Продолжаем с ${A.fmtTime(at)}`, 2000);
+    if (at > 5) ctx.toast(`Продолжаем с ${A.fmtTime(at)}`, 2000);
+    ctx.onOpened();
   }
-  // при запуске: последняя аудиокнига — в мини-плеер (без воспроизведения)
-  async function restore(meta) {
-    if (!meta || !meta.audio || cur) return;
-    try {
-      const blob = window.Native ? null : await ctx.Library.blob(meta.id);
-      if (!window.Native && !blob) return;
-      cur = load(meta, { blob });
-      at = Math.min(meta.apos || 0, cur.duration);
-      if (window.Native) {
-        // приложение могло играть в фоне, пока страницу перезагружали — подхватываем
-        const st = await window.Native.Ab.state().catch(() => null);
-        await engine().open(cur);
-        if (st && st.bookId === cur.id) nativeEngine.applyState(st);
-      } else await engine().open(cur);
-      render();
-    } catch (_) { cur = null; }
+  // закрыть аудиокнигу (открыли другую книгу, удалили её, закрыли всё): пауза, место сохранено
+  function unload() {
+    if (!cur) return;
+    if (playing || loading) engine().pause();
+    save(true);
+    engine().stop();
+    cur = null; playing = false; loading = false; sleep = null; nativeSleepLeft = 0;
+    document.documentElement.classList.remove("ab-mode");
+    document.body.classList.remove("playing", "loading");
+    setBarIcons(false);
+    el.stage.hidden = true;
+    ctx.onLeft();
+    ctx.syncPlayerHeight();
   }
   // книгу удалили из библиотеки
-  function forget(id) {
-    if (!cur || cur.id !== id) return;
-    engine().stop();
-    cur = null; playing = false;
-    show(false);
-    ctx.store.set("lastAudio", null);
-    render();
-  }
+  function forget(id) { if (cur && cur.id === id) ctx.closeBook(); }
   function reset(id) {
     if (!cur || cur.id !== id) return;
     at = 0; lastSaved = -1;
     engine().seek(0);
-    render();
+    renderBar();
   }
   function rename(id, title, authors) {
     if (!cur || cur.id !== id) return;
     cur.title = title; cur.authors = authors;
-    render();
+    renderStage();
   }
 
-  // ---------- экран ----------
+  // ---------- вид: середина экрана, оглавление, плеер внизу (общий с читалкой) ----------
   let el = {};
-  function show(on) {
-    el.view.hidden = !on;
-    document.documentElement.classList.toggle("ab-open", on);
-    if (!on) el.chapters.hidden = true;
-    renderMini();
-  }
-  const isOpen = () => el.view && !el.view.hidden;
-  function close() {
-    if (!el.chapters.hidden) { el.chapters.hidden = true; return; }
-    show(false);
+  const baseName = (n) => String(n).split("/").pop().replace(/\.[^.]+$/, "");
+  const fmtRate = (r) => String(r).replace(".", ",") + "×";
+
+  // ⏮ ⏭ плеера читалки у аудиокниги — назад 15 с и вперёд 30 с
+  function setBarIcons(on) {
+    const set = (btn, icon, title) => { const u = btn.querySelector("use"); if (u) u.setAttribute("href", icon); btn.title = title; btn.setAttribute("aria-label", title); };
+    if (on) { set(ctx.el.prev, "#i-back15", "Назад на 15 секунд (←)"); set(ctx.el.next, "#i-fwd30", "Вперёд на 30 секунд (→)"); }
+    else { set(ctx.el.prev, "#i-prev", "Назад (←)"); set(ctx.el.next, "#i-next", "Вперёд (→)"); }
   }
 
-  const baseName = (n) => String(n).split("/").pop().replace(/\.[^.]+$/, "");
-  function coverHtml() {
-    if (cur.cover) return `<img src="${cur.cover}" alt="">`;
-    return `<div class="ab-ph"><svg><use href="#i-voice"/></svg></div>`;
-  }
-  function render() {
-    if (!el.view) return;
-    renderMini();
+  function renderStage() {
     if (!cur) return;
-    el.cover.innerHTML = coverHtml();
+    el.stage.hidden = false;
+    el.cover.innerHTML = cur.cover ? `<img src="${cur.cover}" alt="">` : `<div class="ab-ph"><svg><use href="#i-voice"/></svg></div>`;
     el.title.textContent = cur.title;
     el.author.textContent = cur.authors.join(", ") || "Автор не указан";
-    el.play.classList.toggle("playing", playing);
-    el.play.classList.toggle("loading", loading && playing);
-    el.play.title = playing ? "Пауза (пробел)" : "Слушать (пробел)";
-    el.rate.value = String(rate());
-    const sl = engine().native ? nativeSleepLeft : sleep ? (sleep.until ? 1 : -1) : 0;
-    el.sleep.classList.toggle("on", !!sl);
-    el.prevCh.disabled = el.nextCh.disabled = cur.chapters.length < 2;
+    const label = (cur.meta.formatLabel || "Аудио") + " · " + A.fmtDuration(cur.duration);
+    ctx.el.title.textContent = cur.title;
+    ctx.el.author.textContent = (cur.authors.join(", ") || "Автор не указан") + " · " + label;
+    document.title = cur.title + " — BookReader";
+  }
+
+  function renderToc() {
+    const list = ctx.el.tocList;
+    list.innerHTML = "";
+    const grp = document.createElement("div");
+    grp.className = "tocgrp";
+    cur.chapters.forEach((c, i) => {
+      const a = document.createElement("a");
+      a.href = "#";
+      a.dataset.c = i;
+      a.className = "ab-toc";
+      a.innerHTML = `<span>${ctx.esc(c.title || `Глава ${i + 1}`)}</span><small>${A.fmtTime(c.at)}</small>`;
+      a.onclick = (e) => { e.preventDefault(); ctx.closePanels(); goChapter(i); };
+      grp.appendChild(a);
+    });
+    list.appendChild(grp);
+    ctx.el.btnToc.disabled = false;
+  }
+
+  // плеер внизу: кнопки, ползунок по текущей главе, строка состояния, таймер сна
+  function renderBar() {
+    if (!cur) return;
+    const E = ctx.el;
+    document.body.classList.toggle("playing", playing);
+    document.body.classList.toggle("loading", loading && playing);
+    [E.play, E.prev, E.next, E.seek].forEach((b) => (b.disabled = false));
+    E.play.title = playing ? "Пауза (пробел)" : "Слушать (пробел)";
+    if (E.rate.value !== String(rate())) E.rate.value = String(rate());
+    const sl = engine().native ? nativeSleepLeft : sleep ? (sleep.until ? Math.max(0, Math.ceil((sleep.until - Date.now()) / 1000)) : -1) : 0;
+    E.sleepBtn.classList.toggle("on", !!sl);
+    E.sleepLeft.hidden = !sl;
+    E.sleepLeft.textContent = sl === -1 ? "гл." : sl ? Math.max(1, Math.ceil(sl / 60)) + "′" : "";
+    E.sleepBtn.title = sl === -1 ? "Таймер сна: пауза в конце главы" : sl ? `Таймер сна: пауза через ${Math.ceil(sl / 60)} мин` : "Таймер сна";
     renderTime();
   }
   function renderTime() {
-    if (!cur || !el.view) return;
+    if (!cur) return;
+    const E = ctx.el;
     const c = chapterOf(at), ch = cur.chapters[c] || { title: cur.title, at: 0 };
     const cs = ch.at, ce = chapterEnd(c), len = Math.max(1, ce - cs);
-    el.chapter.textContent = ch.title || `Глава ${c + 1}`;
-    el.chNum.textContent = cur.chapters.length > 1 ? `Глава ${c + 1} из ${cur.chapters.length}` : "";
-    if (!dragging) el.seek.value = String(Math.round(((at - cs) / len) * 1000));
-    el.pos.textContent = A.fmtTime(at - cs);
-    el.left.textContent = "−" + A.fmtTime(Math.max(0, ce - at));
+    if (!dragging) {
+      E.seek.max = 1000;
+      E.seek.value = String(Math.round(((at - cs) / len) * 1000));
+    }
+    const name = ch.title || `Глава ${c + 1}`;
+    E.statusMain.textContent = cur.chapters.length > 1 ? name : cur.title;
     const pct = cur.duration ? Math.min(100, Math.floor((at / cur.duration) * 100)) : 0;
     const left = Math.max(0, cur.duration - at) / rate();
-    el.total.textContent = `${pct}% · осталось ${A.fmtDuration(left)}` + (rate() !== 1 ? ` при ${String(rate()).replace(".", ",")}×` : "");
-    const cl = el.chList.querySelector(".current");
-    const now = el.chList.querySelector(`[data-c="${c}"]`);
-    if (cl !== now) { if (cl) cl.classList.remove("current"); if (now) now.classList.add("current"); }
-    renderMiniTime();
+    E.statusSub.textContent = `${A.fmtTime(at - cs)} / ${A.fmtTime(ce - cs)} · ${pct}% · осталось ${A.fmtDuration(left)}` +
+      (rate() !== 1 ? ` при ${fmtRate(rate())}` : "") + (playing || loading ? "" : " · пауза");
+    el.chapter.textContent = cur.chapters.length > 1 ? `Глава ${c + 1} из ${cur.chapters.length} · ${name}` : "";
+    const old = E.tocList.querySelector("a.current");
+    const now = E.tocList.querySelector(`a[data-c="${c}"]`);
+    if (old !== now) { if (old) old.classList.remove("current"); if (now) now.classList.add("current"); }
+    if (!engine().native && "mediaSession" in navigator) { try { navigator.mediaSession.playbackState = playing ? "playing" : "paused"; } catch (_) {} }
   }
-  function renderChapters() {
-    if (!cur) return;
-    el.chList.innerHTML = cur.chapters.map((c, i) =>
-      `<button class="ab-ch" data-c="${i}"><span class="ab-ch-t">${ctx.esc(c.title || `Глава ${i + 1}`)}</span><span class="ab-ch-time">${A.fmtTime(c.at)}</span></button>`).join("");
-  }
-  function openChapters() {
-    if (!cur) return;
-    el.chapters.hidden = false;
-    renderTime();
-    const c = el.chList.querySelector(".current");
-    if (c) c.scrollIntoView({ block: "center" });
-  }
+  const render = () => renderBar();
 
-  // мини-плеер внизу библиотеки
-  function renderMini() {
-    if (!el.mini) return;
-    el.mini.hidden = !cur || isOpen();
+  // ползунок: пока тянут — подсказка со временем в главе; отпустили — переход
+  function seekInput() {
     if (!cur) return;
-    el.miniCover.innerHTML = cur.cover ? `<img src="${cur.cover}" alt="">` : `<div class="ab-ph"><svg><use href="#i-voice"/></svg></div>`;
-    el.miniTitle.textContent = cur.title;
-    el.miniPlay.classList.toggle("playing", playing);
-    el.miniPlay.title = playing ? "Пауза" : "Слушать";
-    renderMiniTime();
+    dragging = true;
+    const E = ctx.el;
+    const c = chapterOf(at), cs = cur.chapters[c] ? cur.chapters[c].at : 0, ce = chapterEnd(c);
+    const t = cs + (Number(E.seek.value) / 1000) * (ce - cs);
+    E.seekTip.textContent = `${A.fmtTime(t - cs)} / ${A.fmtTime(ce - cs)}`;
+    E.seekTip.hidden = false;
+    const W = E.seek.parentElement.clientWidth, half = E.seekTip.offsetWidth / 2;
+    const x = E.seek.offsetLeft + 8 + (Number(E.seek.value) / 1000) * (E.seek.clientWidth - 16);
+    E.seekTip.style.left = Math.max(half + 4, Math.min(W - half - 4, x)) + "px";
   }
-  function renderMiniTime() {
-    if (!el.mini || el.mini.hidden || !cur) return;
-    const c = cur.chapters[chapterOf(at)];
-    const pct = cur.duration ? Math.floor((at / cur.duration) * 100) : 0;
-    el.miniSub.textContent = `${c && cur.chapters.length > 1 ? c.title + " · " : ""}${pct}%`;
+  function seekChange() {
+    if (!cur) return;
+    const E = ctx.el;
+    const c = chapterOf(at), cs = cur.chapters[c] ? cur.chapters[c].at : 0, ce = chapterEnd(c);
+    dragging = false;
+    E.seekTip.hidden = true;
+    seekTo(Math.min(ce - 0.5, cs + (Number(E.seek.value) / 1000) * (ce - cs)));
   }
+  function setVolume(v) { browserEngine.setVolume(v); }
 
   function bind() {
-    el = {
-      view: $("ab"), cover: $("abCover"), title: $("abTitle"), author: $("abAuthor"), chapter: $("abChapter"), chNum: $("abChNum"),
-      seek: $("abSeek"), pos: $("abPos"), left: $("abLeft"), total: $("abTotal"), play: $("abPlay"),
-      back15: $("abBack15"), fwd30: $("abFwd30"), prevCh: $("abPrevCh"), nextCh: $("abNextCh"),
-      rate: $("abRate"), sleep: $("abSleep"), chBtn: $("abChBtn"), chapters: $("abChapters"), chList: $("abChList"),
-      chClose: $("abChClose"), back: $("abBack"), lib: $("abLib"),
-      mini: $("abMini"), miniOpen: $("abMiniOpen"), miniCover: $("abMiniCover"), miniTitle: $("abMiniTitle"), miniSub: $("abMiniSub"), miniPlay: $("abMiniPlay"),
-    };
-    el.rate.innerHTML = RATES.map((r) => `<option value="${r}">${String(r).replace(".", ",")}×</option>`).join("");
-    el.play.onclick = toggle;
-    el.back15.onclick = () => skip(-15);
-    el.fwd30.onclick = () => skip(30);
-    el.prevCh.onclick = prevChapter;
-    el.nextCh.onclick = nextChapter;
-    el.rate.onchange = () => setRate(Number(el.rate.value));
-    el.sleep.onclick = sleepDialog;
-    el.chBtn.onclick = openChapters;
-    el.chapter.onclick = openChapters;
-    el.chClose.onclick = () => { el.chapters.hidden = true; };
-    el.chList.onclick = (e) => {
-      const b = e.target.closest("[data-c]");
-      if (!b) return;
-      goChapter(Number(b.dataset.c));
-      el.chapters.hidden = true;
-      if (!playing) play();
-    };
-    el.back.onclick = () => show(false);
-    el.lib.onclick = () => ctx.openLibrary();
-    el.seek.addEventListener("input", () => {
-      dragging = true;
-      const c = chapterOf(at), cs = cur.chapters[c] ? cur.chapters[c].at : 0, ce = chapterEnd(c);
-      const t = cs + (Number(el.seek.value) / 1000) * (ce - cs);
-      el.pos.textContent = A.fmtTime(t - cs);
-      el.left.textContent = "−" + A.fmtTime(Math.max(0, ce - t));
-    });
-    el.seek.addEventListener("change", () => {
-      const c = chapterOf(at), cs = cur.chapters[c] ? cur.chapters[c].at : 0, ce = chapterEnd(c);
-      dragging = false;
-      seekTo(Math.min(ce - 0.5, cs + (Number(el.seek.value) / 1000) * (ce - cs)));
-    });
-    el.miniOpen.onclick = () => { if (cur) { ctx.closePanels(); show(true); render(); renderChapters(); } };
-    el.miniPlay.onclick = toggle;
+    el = { stage: $("abStage"), cover: $("abCover"), title: $("abTitle"), author: $("abAuthor"), chapter: $("abChapter") };
+    el.chapter.onclick = () => ctx.openToc();
     document.addEventListener("visibilitychange", () => { if (document.hidden) save(true); });
     window.addEventListener("beforeunload", () => save(true));
+    // браузер: таймер сна — обновлять минуты на кнопке
+    setInterval(() => { if (cur && sleep && sleep.until) renderBar(); }, 20000);
   }
 
-  // кнопки гарнитуры / экрана блокировки в браузере: аудиокнига, если её экран открыт или она играет
+  // кнопки гарнитуры / экрана блокировки в браузере — открытой аудиокниге
   function mediaAction(name) {
-    if (!cur || !(isOpen() || playing)) return false;
+    if (!cur) return false;
     ({ play, pause, stop: pause, previoustrack: () => skip(-15), nexttrack: () => skip(30), seekbackward: () => skip(-15), seekforward: () => skip(30) }[name] || (() => {}))();
     return true;
   }
 
-  // клавиши на экране плеера
+  // клавиши: пробел — ▶/⏸, ← → — 15 / 30 секунд
   function key(e) {
-    if (!isOpen()) return false;
+    if (!cur) return false;
     if (e.code === "Space") { e.preventDefault(); toggle(); return true; }
     if (e.code === "ArrowLeft") { e.preventDefault(); skip(-15); return true; }
     if (e.code === "ArrowRight") { e.preventDefault(); skip(30); return true; }
-    if (e.code === "Escape") { e.preventDefault(); close(); return true; }
-    return e.code === "KeyT" || e.code === "KeyP";   // клавиши текстовой книги здесь не работают
+    return e.code === "KeyP" || e.code === "Home" || e.code === "End" || e.code === "PageUp" || e.code === "PageDown";
   }
 
   // ---------- добавление ----------
@@ -569,8 +541,10 @@
 
   window.Audiobook = {
     init(c) { ctx = c; bind(); },
-    open, restore, forget, reset, mediaAction, rename, close, isOpen, key, play, pause, toggle,
+    open, unload, forget, reset, rename, mediaAction, key, play, pause, toggle, skip, sleepDialog, setRate, setVolume,
+    seekInput, seekChange, renderBar,
     split, importBrowser, importNative,
+    get active() { return !!cur; },
     get current() { return cur ? cur.id : null; },
     get playing() { return playing; },
     onNativeState: (st) => nativeEngine.applyState(st),

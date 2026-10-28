@@ -842,65 +842,29 @@ html.autonomous .seg, html.autonomous .seg:hover, html.autonomous .seg.current, 
   background: none; color: inherit; outline: none; cursor: auto;
 }   /* «Каталог» скрыт — «Добавить» во всю ширину */
 
-/* ---------- плеер аудиокниг (шаг 8) ---------- */
-.ab { position: fixed; inset: 0; z-index: 28; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; }
-.ab[hidden] { display: none; }
-.ab-head { display: flex; align-items: center; gap: 8px; height: var(--top-h); padding: 0 8px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; }
-.ab-head-title { flex: 1; text-align: center; font-weight: 650; font-size: 15px; }
-.ab-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 18px 20px calc(22px + env(safe-area-inset-bottom, 0px)); max-width: 560px; width: 100%; margin: 0 auto; }
-.ab-cover { width: min(64vw, 300px, 34vh); aspect-ratio: 1; border-radius: 12px; overflow: hidden; flex: none;
-  background: var(--line); box-shadow: 0 10px 30px rgba(0,0,0,.18); display: grid; place-items: center; }
+/* ---------- аудиокнига (шаг 8): обложка в середине, плеер внизу — общий с читалкой ---------- */
+.ab-stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center;
+  min-height: calc(100dvh - var(--top-h) - var(--player-h, 120px) - 24px); padding: 20px 16px; max-width: 640px; margin: 0 auto; }
+.ab-stage[hidden] { display: none; }
+.ab-cover { width: min(64vw, 300px, 36vh); aspect-ratio: 1; border-radius: 12px; overflow: hidden; flex: none;
+  background: var(--line); box-shadow: 0 10px 30px rgba(0,0,0,.18); margin-bottom: 8px; }
 .ab-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ab-ph { width: 100%; height: 100%; display: grid; place-items: center; color: var(--muted); background: var(--hl-soft); }
 .ab-ph svg { width: 42%; height: 42%; }
-.ab-meta { text-align: center; max-width: 100%; margin-top: 6px; }
-.ab-title { font-size: 19px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
-.ab-author { font-size: 14px; color: var(--muted); margin-top: 3px; }
-.ab-chapter { border: 0; background: none; color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
-  max-width: 100%; padding: 6px 10px; border-radius: 8px; text-align: center; overflow-wrap: anywhere; }
+.ab-title { font-size: 20px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.ab-author { font-size: 14px; color: var(--muted); }
+.ab-chapter { border: 0; background: none; color: var(--ink); font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer;
+  max-width: 100%; padding: 6px 10px; border-radius: 8px; overflow-wrap: anywhere; }
+.ab-chapter:empty { display: none; }
 .ab-chapter:hover { background: var(--hl-soft); }
-.ab-chnum { font-size: 12.5px; color: var(--muted); margin-top: -8px; min-height: 1em; }
-.ab-seek { width: 100%; }
-.ab-seek input { width: 100%; margin: 0; height: 26px; accent-color: var(--accent); cursor: pointer; }
-.ab-times { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.ab-ctrl { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; }
-.ab-ctrl .icon-btn { min-width: 44px; height: 44px; }
-.ab-ctrl .icon-btn svg { width: 24px; height: 24px; }
-.ab-ctrl .ab-skip svg { width: 30px; height: 30px; }
-.ab .ab-play { width: 66px; height: 66px; margin: 0 6px; }
-.ab .ab-play svg { width: 30px; height: 30px; }
-.play-btn.playing .ic-play { display: none; }
-.play-btn.playing .ic-pause { display: block; }
-.play-btn.loading svg { display: none; }
-.play-btn.loading .spinner { display: block; }
-.ab-extra { display: flex; align-items: center; justify-content: center; gap: 18px; }
-.ab-extra .icon-btn { min-width: 42px; height: 42px; }
-.ab-total { font-size: 12.5px; color: var(--muted); text-align: center; }
-.ab-chapters { position: absolute; inset: 0; background: var(--surface); display: flex; flex-direction: column; z-index: 2; }
-.ab-chapters[hidden] { display: none; }
-.ab-ch-list { flex: 1; overflow-y: auto; padding: 6px 0 calc(12px + env(safe-area-inset-bottom, 0px)); }
-.ab-ch { display: flex; gap: 12px; align-items: baseline; width: 100%; padding: 11px 18px; border: 0; border-left: 3px solid transparent;
-  background: none; color: var(--ink); font: inherit; font-size: 14.5px; text-align: left; cursor: pointer; }
-.ab-ch:hover { background: var(--hl-soft); }
-.ab-ch.current { border-left-color: var(--accent); background: var(--hl-soft); font-weight: 600; }
-.ab-ch-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.ab-ch-time { flex: none; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
-html.ab-open { overflow: hidden; }
-@media (min-width: 900px) and (min-height: 600px) { .ab-cover { width: min(300px, 38vh); } }
-
-/* мини-плеер внизу библиотеки */
-.ab-mini { display: flex; align-items: center; gap: 8px; padding: 8px 12px 8px 8px; border-top: 1px solid var(--line); background: var(--hl-soft); }
-.ab-mini[hidden] { display: none; }
-.ab-mini-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; color: var(--ink);
-  font: inherit; text-align: left; cursor: pointer; padding: 2px 4px; border-radius: 8px; }
-.ab-mini-open .lib-cover { width: 40px; height: 40px; }
-.ab-mini-open .lib-cover img { width: 100%; height: 100%; object-fit: cover; }
-.ab-mini-info { min-width: 0; display: flex; flex-direction: column; }
-.ab-mini-info b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ab-mini-info small { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ab-mini .ab-mini-play { width: 42px; height: 42px; flex: none; margin: 0; }
-.ab-mini .ab-mini-play svg { width: 20px; height: 20px; }
+/* в режиме аудиокниги нет текста: страницы, «к месту чтения», загрузка озвучки и разметка глав не нужны */
+html.ab-mode #pager, html.ab-mode #empty, html.ab-mode .page-nav, html.ab-mode .page-bar, html.ab-mode #toReading,
+html.ab-mode #undoBar, html.ab-mode #seekMark, html.ab-mode #serverWarn, html.ab-mode #tocAuto, html.ab-mode .toc-tools.toc-tools.native-only { display: none !important; }
+/* плеер внизу нужен аудиокниге и в автономном режиме */
+html.ab-mode #player.tts-only { display: block !important; }
+#tocList a.ab-toc { display: flex; gap: 10px; align-items: baseline; }
+#tocList a.ab-toc span { flex: 1; min-width: 0; }
+#tocList a.ab-toc small { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* библиотека: значок аудиокниги, фильтр «Книги / Аудиокниги» рядом с сортировкой */
 .lib-ab { width: 14px; height: 14px; flex: none; color: var(--accent); }

@@ -99,13 +99,6 @@
       <button class="sel-btn native-only tts-only" id="selAudio" title="Озвучка выбранных: загрузить или удалить" aria-label="Озвучка выбранных"><svg><use href="#i-voice"/></svg><span>Озвучка</span></button>
       <button class="sel-btn danger" id="selDelete" title="Удалить выбранные книги" aria-label="Удалить выбранные книги"><svg><use href="#i-trash"/></svg><span>Удалить</span></button>
     </div>
-    <div class="ab-mini" id="abMini" hidden>
-      <button class="ab-mini-open" id="abMiniOpen" title="Открыть плеер аудиокниги">
-        <span class="lib-cover" id="abMiniCover"></span>
-        <span class="ab-mini-info"><b id="abMiniTitle"></b><small id="abMiniSub"></small></span>
-      </button>
-      <button class="play-btn ab-mini-play" id="abMiniPlay" title="Слушать"><svg class="ic-play"><use href="#i-play"/></svg><svg class="ic-pause"><use href="#i-pause"/></svg></button>
-    </div>
     <div class="lib-foot">
       <button class="btn-settings" id="btnOpenSettings"><svg><use href="#i-gear"/></svg><span>Настройки</span></button>
       <div class="lib-foot-info">
@@ -186,6 +179,13 @@
         <div class="recent-list" id="recentList"></div>
       </div>
     </section>
+    <!-- аудиокнига (шаг 8): обложка вместо текста; управление — плеер внизу, главы — в оглавлении -->
+    <section class="ab-stage" id="abStage" hidden>
+      <div class="ab-cover" id="abCover"></div>
+      <div class="ab-title" id="abTitle"></div>
+      <div class="ab-author" id="abAuthor"></div>
+      <button class="ab-chapter" id="abChapter" title="Главы"></button>
+    </section>
     <div class="pager" id="pager">
       <article class="reader" id="reader" hidden></article>
     </div>
@@ -197,49 +197,6 @@
       <button class="page-btn" id="pageFwd" title="Следующая страница (→)"><span>Вперёд</span><svg><use href="#i-chev-r"/></svg></button>
     </div>
   </main>
-
-  <!-- плеер аудиокниги (шаг 8): поверх книги, работает в любом режиме -->
-  <section class="ab" id="ab" hidden aria-label="Аудиокнига">
-    <div class="ab-head">
-      <button class="icon-btn" id="abBack" title="Свернуть плеер" aria-label="Свернуть плеер"><svg><use href="#i-chev-l"/></svg></button>
-      <span class="ab-head-title">Аудиокнига</span>
-      <button class="icon-btn" id="abLib" title="Книги и настройки" aria-label="Книги и настройки"><svg><use href="#i-books"/></svg></button>
-    </div>
-    <div class="ab-body">
-      <div class="ab-cover" id="abCover"></div>
-      <div class="ab-meta">
-        <div class="ab-title" id="abTitle"></div>
-        <div class="ab-author" id="abAuthor"></div>
-      </div>
-      <button class="ab-chapter" id="abChapter" title="Список глав"></button>
-      <div class="ab-chnum" id="abChNum"></div>
-      <div class="ab-seek">
-        <input type="range" id="abSeek" min="0" max="1000" value="0" step="1" aria-label="Позиция в главе">
-        <div class="ab-times"><span id="abPos">0:00</span><span id="abLeft">−0:00</span></div>
-      </div>
-      <div class="ab-ctrl">
-        <button class="icon-btn" id="abPrevCh" title="Предыдущая глава" aria-label="Предыдущая глава"><svg><use href="#i-prev"/></svg></button>
-        <button class="icon-btn ab-skip" id="abBack15" title="Назад на 15 секунд (←)" aria-label="Назад на 15 секунд"><svg><use href="#i-back15"/></svg></button>
-        <button class="play-btn ab-play" id="abPlay" title="Слушать (пробел)">
-          <svg class="ic-play"><use href="#i-play"/></svg>
-          <svg class="ic-pause"><use href="#i-pause"/></svg>
-          <span class="spinner"></span>
-        </button>
-        <button class="icon-btn ab-skip" id="abFwd30" title="Вперёд на 30 секунд (→)" aria-label="Вперёд на 30 секунд"><svg><use href="#i-fwd30"/></svg></button>
-        <button class="icon-btn" id="abNextCh" title="Следующая глава" aria-label="Следующая глава"><svg><use href="#i-next"/></svg></button>
-      </div>
-      <div class="ab-extra">
-        <label class="field" title="Скорость"><select id="abRate" aria-label="Скорость"></select></label>
-        <button class="icon-btn sleep-btn" id="abSleep" title="Таймер сна" aria-label="Таймер сна"><svg><use href="#i-moon"/></svg></button>
-        <button class="icon-btn" id="abChBtn" title="Главы" aria-label="Главы"><svg><use href="#i-chapters"/></svg></button>
-      </div>
-      <div class="ab-total" id="abTotal"></div>
-    </div>
-    <div class="ab-chapters" id="abChapters" hidden>
-      <div class="panel-head"><span>Главы</span><button class="icon-btn" id="abChClose" title="Закрыть">✕</button></div>
-      <div class="ab-ch-list" id="abChList"></div>
-    </div>
-  </section>
 
   <!-- место чтения ушло с экрана — вернуться; переход во время чтения — отменить -->
   <button class="to-reading tts-only" id="toReading" hidden title="Вернуться к месту, где идёт чтение"><svg><use href="#i-locate"/></svg><span>К месту чтения</span></button>
