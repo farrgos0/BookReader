@@ -2783,6 +2783,7 @@ window.addEventListener("error", (e) => {
 
   // закрыть самое верхнее: клавиатура → вопрос → окно загрузки → меню книги → подраздел панели → панель
   function goBack() {
+    if (window.Picker && Picker.close()) return true;   // открыт выбор из списка
     if (hideKeyboard()) return true;
     if (!askEl.box.hidden) {
       if (askEl.box.dataset.closable) askCancel();
