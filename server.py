@@ -67,7 +67,7 @@ LOOPBACK = "127.0.0.1"
 DEFAULT_UPDATE_REPO = "farrgos0/BookReader"   # выпуски на GitHub: архив обновления сервера и APK (шаг 6)
 UPDATE_REPO = DEFAULT_UPDATE_REPO             # "update_repo" в server.json — своё
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 SAMPLE_RATE = 48000
 DEFAULT_SPEAKER = "aidar"
 MAX_CHUNK = 800          # Silero не любит слишком длинные куски
