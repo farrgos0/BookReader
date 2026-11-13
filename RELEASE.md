@@ -70,6 +70,18 @@
 
 ## 4. Архив сервера
 
+**Сначала — интерфейс.** Главная копия `web/` — в репозитории BookReaderClient. Перед сборкой архивов перенесите её
+сюда (в PowerShell, пути — свои):
+
+```
+cd <папка сервера BookReader>
+robocopy <папка BookReaderClient>\web web /MIR /XF *.mjs
+git status web
+```
+
+`/MIR` делает папку точной копией (удалённые в клиенте файлы удалятся и здесь), `*.mjs` (дубли pdf.js, не в git)
+не трогаются. Изменения `web/` коммитятся вместе с выпуском.
+
 `build-server.bat` в папке сервера спросит, какой архив собрать: полный (`build-server-full.bat` →
 `dist\BookReader_Server_vX.Y.Z_full.zip` + части `_NVIDIA_`, с пакетами для установки без интернета из папки `packages`),
 обновление (`build-server-update.bat` → `dist\BookReader_Server_vX.Y.Z_update.zip`, только программа) или оба — для
